@@ -1,0 +1,13 @@
+name = "spark_re"
+description = "Bounded Thompson regex engine in SPARK"
+version = "0.1.0"
+authors = ["Johannes Kanig"]
+maintainers = ["Johannes Kanig <johannes.kanig@gmail.com>"]
+maintainers-logins = ["kanigsson"]
+licenses = "Apache-2.0"
+tags = ["regex", "matching", "spark"]
+project-files = ["spark_re.gpr"]
+[[depends-on]]
+gnat = ">=12 & <2000"
+[configuration]
+disabled = true

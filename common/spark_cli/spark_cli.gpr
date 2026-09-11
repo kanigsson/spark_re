@@ -1,0 +1,10 @@
+library project Spark_Cli is
+   for Source_Dirs use ("src");
+   for Object_Dir use "../../obj/cli-support";
+   for Library_Dir use "../../lib/cli-support";
+   for Library_Name use "spark_cli";
+   for Library_Kind use "static";
+   package Compiler is
+      for Default_Switches ("Ada") use ("-gnat2022", "-gnatwa", "-gnata", "-O2");
+   end Compiler;
+end Spark_Cli;

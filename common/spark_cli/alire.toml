@@ -1,0 +1,12 @@
+name = "spark_cli"
+description = "Ordinary Ada byte record framing for command line tools"
+version = "0.1.0"
+authors = ["Johannes Kanig"]
+maintainers = ["Johannes Kanig <johannes.kanig@gmail.com>"]
+maintainers-logins = ["kanigsson"]
+licenses = "Apache-2.0"
+project-files = ["spark_cli.gpr"]
+[[depends-on]]
+gnat = ">=12 & <2000"
+[configuration]
+disabled = true

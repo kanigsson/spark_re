@@ -1,0 +1,8 @@
+/bin/
+/obj/
+/lib/
+/proof/
+/validation/
+__pycache__/
+/alire/
+/local.mk
