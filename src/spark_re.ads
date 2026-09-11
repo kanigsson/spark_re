@@ -28,17 +28,29 @@ package Spark_Re with SPARK_Mode is
    with
      Global => null,
      Always_Terminates,
-     Post   => (Is_Valid (Result) = (Status = Success)) and Well_Formed (Result);
+     Post   =>
+       (Is_Valid (Result) = (Status = Success)) and Well_Formed (Result);
+   --  Declarative semantics of the compiled NFA, including absolute anchors
+   --  and restart at every text boundary for search. This does not specify
+   --  which NFA Compile must construct for a given pattern.
+   function NFA_Accepts
+     (Self : Program; Text : String; Whole : Boolean) return Boolean
+   with Ghost => Static, Global => null;
    --  Search accepts a substring; Full_Match accepts the entire byte string.
    --  Invalid programs return False. Anchors refer to the entire input string.
    function Search (Self : Program; Text : String) return Boolean
    with
      Global => null,
      Post   => (if not Is_Valid (Self) then not Search'Result);
+   pragma
+     Postcondition (Static => Search'Result = NFA_Accepts (Self, Text, False));
    function Full_Match (Self : Program; Text : String) return Boolean
    with
      Global => null,
      Post   => (if not Is_Valid (Self) then not Full_Match'Result);
+   pragma
+     Postcondition
+       (Static => Full_Match'Result = NFA_Accepts (Self, Text, True));
 private
    subtype State_Id is Natural range 0 .. Max_States;
    subtype Live_State is State_Id range 1 .. Max_States;

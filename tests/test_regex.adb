@@ -28,6 +28,16 @@ begin
    Check ("(ab|c)+d?", "abcabd", True, True);
    Check ("(a*)*", "aaa", True, True);
    Check ("(a?)*b", "aaa", False, False);
+   Check ("(^|a)*b$", "xaaab", True, False);
+   Check ("(^$)*", "a", True, False);
+   Check ("(a|$)*", "aa", True, True);
+   Check ("a($|b)*", "ab", True, True);
+   Check ("($a|^b)*", "b", True, True);
+   Check ("($a|^b)*", "ba", True, False);
+   Check ("($a|^b)+", "ab", False, False);
+   Check ("(a?|b?)*c", "abbac", True, True);
+   Check ("(a?|b?)*c", "abba", False, False);
+   Check ("((^|$)|())*x", "x", True, True);
    Check ("a{2,4}", "aaa", True, True);
    Check ("a{2,}", "aaaaa", True, True);
    Check ("a{0}", "", True, True);
@@ -46,6 +56,17 @@ begin
       Check ("[^\" & Byte & "]", [1 => Byte], False, False);
       Check (".", [1 => Byte], True, True);
    end loop;
+   --  The epsilon closure fills all three available worklist slots.
+   Tiny.Compile ("a*", T, TS);
+   pragma Assert (TS = Tiny.Success and Tiny.State_Count (T) = 3);
+   pragma Assert (Tiny.Full_Match (T, ""));
+   pragma Assert (Tiny.Full_Match (T, "aaaa"));
+   pragma Assert (not Tiny.Full_Match (T, "b"));
+   Tiny.Compile ("(|a)", T, TS);
+   pragma Assert (TS = Tiny.Success and Tiny.State_Count (T) = 3);
+   pragma Assert (Tiny.Search (T, "b"));
+   pragma Assert (not Tiny.Full_Match (T, "b"));
+   pragma Assert (Tiny.Full_Match (T, "a"));
    Tiny.Compile ("abcd", T, TS);
    pragma Assert (TS = Tiny.Node_Limit);
    Tiny.Compile ("a{4}", T, TS);

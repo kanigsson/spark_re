@@ -11,7 +11,7 @@ Use a matching Ada 2022 GNAT/GPRbuild and GNATprove installation.
 make test                 # library tests, Python re and grep -E oracles
 make test-contracts       # same tests with executable library contracts
 make flow                 # initialization and dependency analysis
-make prove                # safety, termination, selected functional contracts
+make prove                # safety, termination, NFA simulator correctness
 make format
 printf '%s\n' src/foo.adb src/bar.ads | bin/spark-grep '\.adb$'
 bin/spark-grep -n 'procedure|function' src/*.ad?
@@ -82,9 +82,10 @@ state use depends on expanded pattern size. Nested empty repetitions are also
 bounded by the separate compiler work budget.
 
 The simulator performs at most one visit per state in each epsilon closure,
-using a visited set and linked worklist. It uses O(state capacity) workspace
-and O((text length + 1) * compiled state count) time, with no backtracking.
-Search injects the start state at each position in the same simulation.
+using a visited set and an append-only worklist. It uses O(state capacity)
+workspace and O((text length + 1) * state capacity) time, including clearing
+the fixed-size state arrays. Each closure processes at most the compiled state
+count. Search injects the start state at each position, with no backtracking.
 
 ## CLI
 
@@ -116,23 +117,27 @@ subset, not a drop-in GNU grep or ripgrep replacement.
 
 The Silver milestone proves absence of runtime errors, initialization,
 global dependencies, and termination for the complete default `Regex` instance.
-The subsequent Gold work proves selected functional properties: compile status
-agrees with validity; instruction targets stay inside the compiled prefix;
-invalid programs reject input; each byte transition is exact; and epsilon
-closure preserves its seeds and constructs finite predecessor-path certificates
-for all reached states, respecting anchors. Ghost certificates disappear in
-release builds. Contract-enabled builds execute them and can be much slower.
+The functional proof establishes exact byte transitions, epsilon-closure
+soundness and completeness, and equivalence of `Search` and `Full_Match` to
+the declarative `NFA_Accepts` model. Compile status agrees with validity;
+instruction targets stay inside the compiled prefix; recursive compilation
+preserves existing instructions; invalid programs reject input.
 
-These are component-level functional proofs. Full pattern-language equivalence,
-epsilon-closure completeness, and end-to-end search soundness/completeness are
-not claimed. Parsing and compilation semantics remain differential-test backed.
-The generic body is checked through that instance: custom instantiations need
-their own GNATprove run. CLI and shared I/O code are outside SPARK.
+Full pattern-language correctness remains unproved: the parser and compiler
+are not yet proved to preserve regex-language semantics. Their behavior is
+differential-test backed. [PROOF.md](PROOF.md) defines the simulator theorem
+and the remaining parser/compiler obligations.
+
+Recursive semantic models and proof certificates use SPARK's `Static` ghost
+level. They are proved but never executed, including in contract-enabled
+builds; ordinary executable contracts remain enabled there. The generic body
+is checked through the default instance: custom instantiations need their own
+GNATprove run. CLI and shared I/O code are outside SPARK.
 
 `tests/test_regex.adb` exercises default invalid programs, arbitrary/high string
 bounds, empty/nullable cycles, all 256 bytes through escaped/negated classes and
-dot, anchors, repetitions and capacity limits.
-`tests/test_cli.py` deterministically compares 279 fixed/generated patterns in
+dot, anchored nullable cycles, repetitions, and worklist/capacity limits.
+`tests/test_cli.py` deterministically compares 290 fixed/generated patterns in
 both search and whole-record modes against Python `re` and GNU `grep -aE` in
 locale C, and checks CLI output, statuses, framing and malformed inputs. It
 also exercises adversarial nonmatching input. Tests require Python 3 and GNU

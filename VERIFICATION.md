@@ -71,11 +71,12 @@ The new properties are:
   start/end anchor conditions. `Bounded_Depth` bounds these depths by the
   current closure iteration; worklist references remain reached/live.
 
-These are selected component-level Gold properties, not a full-language
-correctness theorem. There is no proved equivalence between the pattern syntax
-and compiled NFA, no closure-completeness theorem, no end-to-end search theorem,
-and no formal machine-cost model. The O((L+1)*S) runtime bound follows from
-bounded loops and the visited worklist design; termination itself is proved.
+At that milestone these were selected component-level Gold properties, not a
+full-language correctness theorem. Pattern/compiler equivalence, closure
+completeness, and end-to-end search correctness were still open. Termination
+was proved; a formal machine-cost model was not. The simulator proof below
+closes the closure and NFA simulation gaps. Array initialization costs depend
+on configured capacity, even when fewer states are compiled.
 
 The toolchain and proof settings are unchanged from Silver. Final validation
 uses `python3 scripts/validate.py`: release and executable-contract tests,
@@ -83,3 +84,51 @@ flow analysis, then proof, with per-command logs/statuses and source hashes.
 The Ada tests additionally exercise every one of the 256 byte values through
 escaped classes, negated classes, and dot. The differential/CLI suite remains
 1,154 checks over 279 fixed/generated patterns in both modes.
+
+## NFA simulator correctness — 2026-09-11
+
+The full regex proof attempt establishes **all 438 checks proved**, with zero
+justified or unproved checks, using the same toolchain and proof options:
+
+| Category | Checks |
+| --- | ---: |
+| Data dependencies | 9 |
+| Initialization | 30 |
+| Runtime checks | 215 |
+| Assertions | 63 |
+| Functional contracts | 74 |
+| Termination | 47 |
+
+`Search` and `Full_Match` now have proved public postconditions equating their
+results to `NFA_Accepts`. This ghost model uses an independently defined
+epsilon-path relation and a recurrence over text offsets; it does not call
+the executable simulator. The closure result is proved both sound and complete
+and is the least epsilon-closed superset of its seeds, respecting absolute
+anchors. `Run` maintains equality with the model at every boundary, including
+search restarts and early acceptance.
+
+The executable worklist changed from a linked stack to an append-only queue.
+Proved cardinality and inverse-index invariants ensure capacity and show that
+every reached state is processed before closure returns. Additional compiler
+contracts prove exact instruction emission and preservation of all existing
+instructions during recursive compilation, including failure paths.
+
+**This is not a full regex-language correctness proof.** No proved relation
+yet connects pattern syntax to the parser's tree or that tree's language to
+the compiled NFA. Those obligations are missing semantic specifications and
+proofs, not checks suppressed from the reported total. [PROOF.md](PROOF.md)
+states the proved model and the remaining full-language theorem.
+
+The recursive model, induction lemmas, worklist certificates and compiler
+snapshots use SPARK's `Static` ghost level. GNATprove proves their contracts
+and termination, but they are erased in both build modes. Ordinary executable
+contracts remain checked by `make test-contracts`. No assumptions, imported
+proof axioms, proof suppressions or SPARK exclusions were added.
+
+Validation uses `python3 scripts/validate.py`: release tests, executable-contract
+tests, flow analysis and proof. Both test modes pass the Ada cases and **1,198
+differential/CLI checks over 290 patterns**. New regressions cover anchored
+nullable cycles and worklists filled exactly to capacity. The script retains
+logs, command statuses, source hashes and timings under ignored `validation/`.
+The proof still covers the default instance; custom capacities, stack space
+and a formal machine-cost model remain outside this evidence.

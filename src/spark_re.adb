@@ -170,6 +170,17 @@ is
           and Id <= Result.Count
           and (if Status = Success then Id > 0)
       is
+         pragma
+           Postcondition
+             (Static =>
+                (for all K in 1 .. Result.Count'Old =>
+                   Result.Code (K) = Result.Code'Old (K))
+                and (if Id /= 0 then Id > Result.Count'Old)
+                and
+                  (if Status = Success
+                   then
+                     Id = Result.Count
+                     and Result.Code (Id) = Instruction'(Op, Bytes, A, B)));
       begin
          Id := 0;
          if Status /= Success then
@@ -198,6 +209,11 @@ is
           and Entry_State <= Result.Count
           and (if Status = Success and Next > 0 then Entry_State > 0)
       is
+         pragma
+           Postcondition
+             (Static =>
+                (for all K in 1 .. Result.Count'Old =>
+                   Result.Code (K) = Result.Code'Old (K)));
          A, B, S : State_Id;
          N       : Node;
       begin
@@ -259,6 +275,11 @@ is
                      pragma
                        Loop_Invariant
                          (Result.Count >= Result.Count'Loop_Entry);
+                     pragma
+                       Loop_Invariant
+                         (Static =>
+                            (for all J in 1 .. Result.Count'Loop_Entry =>
+                               Result.Code (J) = Result.Code'Loop_Entry (J)));
                      pragma Loop_Invariant (A <= Result.Count);
                      pragma
                        Loop_Invariant
@@ -273,6 +294,11 @@ is
                     Loop_Invariant (not Result.Valid and Links_Valid (Result));
                   pragma
                     Loop_Invariant (Result.Count >= Result.Count'Loop_Entry);
+                  pragma
+                    Loop_Invariant
+                      (Static =>
+                         (for all J in 1 .. Result.Count'Loop_Entry =>
+                            Result.Code (J) = Result.Code'Loop_Entry (J)));
                   pragma Loop_Invariant (A <= Result.Count);
                   pragma
                     Loop_Invariant
@@ -513,6 +539,13 @@ is
           = (for some Source in 1 .. Self.Count =>
                Consumes_To (Self, Before, Byte, Source, Target)))
    is
+      pragma
+        Postcondition
+          (Static =>
+             (for all Target in State_Id =>
+                After (Target)
+                = (for some Source in 1 .. Self.Count =>
+                     Consumes_To (Self, Before, Byte, Source, Target))));
    begin
       After := [others => False];
       for Id in 1 .. Self.Count loop
@@ -524,10 +557,11 @@ is
          end if;
          pragma
            Loop_Invariant
-             (for all Target in 0 .. Self.Count =>
-                After (Target)
-                = (for some Source in 1 .. Id =>
-                     Consumes_To (Self, Before, Byte, Source, Target)));
+             (Static =>
+                (for all Target in State_Id =>
+                   After (Target)
+                   = (for some Source in 1 .. Id =>
+                        Consumes_To (Self, Before, Byte, Source, Target))));
       end loop;
    end Advance;
 
@@ -547,6 +581,167 @@ is
             when others   => False))
    with Ghost;
 
+   --  Declarative bounded-path semantics, independent of the worklist.
+   --  Steps counts epsilon edges, with anchors evaluated at this text boundary.
+   function Epsilon_Reach
+     (Self              : Program;
+      Seeds             : State_Set;
+      At_First, At_Last : Boolean;
+      Target            : State_Id;
+      Steps             : Natural) return Boolean
+   is (Target in 1 .. Self.Count
+       and then
+         (Seeds (Target)
+          or else
+            (Steps > 0
+             and then
+               (for some Source in 1 .. Self.Count =>
+                  Epsilon_Edge (Self, Source, Target, At_First, At_Last)
+                  and then
+                    Epsilon_Reach
+                      (Self, Seeds, At_First, At_Last, Source, Steps - 1)))))
+   with Ghost => Static, Subprogram_Variant => (Decreases => Steps);
+
+   --  Ada array equality concerns the declared index range. Establish that
+   --  the recursive relation depends only on elements in that range too.
+   procedure Lemma_Reach_Extensional
+     (Self              : Program;
+      Left, Right       : State_Set;
+      At_First, At_Last : Boolean;
+      Steps             : Natural)
+   with
+     Ghost              => Static,
+     Subprogram_Variant => (Decreases => Steps),
+     Pre                => Left = Right,
+     Post               =>
+       (for all Id in State_Id =>
+          Epsilon_Reach (Self, Left, At_First, At_Last, Id, Steps)
+          = Epsilon_Reach (Self, Right, At_First, At_Last, Id, Steps))
+   is
+   begin
+      if Steps > 0 then
+         Lemma_Reach_Extensional
+           (Self, Left, Right, At_First, At_Last, Steps - 1);
+      end if;
+   end Lemma_Reach_Extensional;
+
+   function Epsilon_Closed
+     (Self : Program; Reached : State_Set; At_First, At_Last : Boolean)
+      return Boolean
+   is (for all Source in 1 .. Self.Count =>
+         (if Reached (Source)
+          then
+            (for all Target in 1 .. Self.Count =>
+               (if Epsilon_Edge (Self, Source, Target, At_First, At_Last)
+                then Reached (Target)))))
+   with Ghost => Static;
+
+   procedure Lemma_Reach_Monotone
+     (Self              : Program;
+      Seeds             : State_Set;
+      At_First, At_Last : Boolean;
+      Small, Large      : Natural)
+   with
+     Ghost              => Static,
+     Subprogram_Variant => (Decreases => Small),
+     Pre                => Small <= Large,
+     Post               =>
+       (for all Target in 1 .. Self.Count =>
+          (if Epsilon_Reach (Self, Seeds, At_First, At_Last, Target, Small)
+           then Epsilon_Reach (Self, Seeds, At_First, At_Last, Target, Large)))
+   is
+   begin
+      if Small > 0 and then Small < Large then
+         Lemma_Reach_Monotone
+           (Self, Seeds, At_First, At_Last, Small - 1, Large - 1);
+      end if;
+   end Lemma_Reach_Monotone;
+
+   --  A closed superset of the seeds contains every finite epsilon path.
+   procedure Lemma_Closed_Reach
+     (Self              : Program;
+      Seeds, Reached    : State_Set;
+      At_First, At_Last : Boolean;
+      Steps             : Natural)
+   with
+     Ghost              => Static,
+     Subprogram_Variant => (Decreases => Steps),
+     Pre                =>
+       Epsilon_Closed (Self, Reached, At_First, At_Last)
+       and
+         (for all Id in 1 .. Self.Count => (if Seeds (Id) then Reached (Id))),
+     Post               =>
+       (for all Target in 1 .. Self.Count =>
+          (if Epsilon_Reach (Self, Seeds, At_First, At_Last, Target, Steps)
+           then Reached (Target)))
+   is
+   begin
+      if Steps > 0 then
+         Lemma_Closed_Reach
+           (Self, Seeds, Reached, At_First, At_Last, Steps - 1);
+      end if;
+   end Lemma_Closed_Reach;
+
+   function Cardinality (Items : State_Set; Last : State_Id) return Natural
+   is (if Last = 0
+       then 0
+       else Cardinality (Items, Last - 1) + Boolean'Pos (Items (Last)))
+   with
+     Ghost              => Static,
+     Subprogram_Variant => (Decreases => Last),
+     Post               => Cardinality'Result <= Last;
+
+   procedure Lemma_Empty_Count (Items : State_Set; Last : State_Id)
+   with
+     Ghost              => Static,
+     Subprogram_Variant => (Decreases => Last),
+     Pre                => (for all K in 1 .. Last => not Items (K)),
+     Post               => Cardinality (Items, Last) = 0
+   is
+   begin
+      if Last > 0 then
+         Lemma_Empty_Count (Items, Last - 1);
+      end if;
+   end Lemma_Empty_Count;
+
+   procedure Lemma_Add_Count
+     (Before, After : State_Set; Id : Live_State; Last : State_Id)
+   with
+     Ghost              => Static,
+     Subprogram_Variant => (Decreases => Last),
+     Pre                =>
+       not Before (Id)
+       and After (Id)
+       and (for all K in State_Id => (if K /= Id then Before (K) = After (K))),
+     Post               =>
+       Cardinality (After, Last)
+       = Cardinality (Before, Last) + (if Id <= Last then 1 else 0)
+   is
+   begin
+      if Last > 0 then
+         Lemma_Add_Count (Before, After, Id, Last - 1);
+      end if;
+   end Lemma_Add_Count;
+
+   procedure Lemma_Count_Missing
+     (Items : State_Set; Id : Live_State; Last : State_Id)
+   with
+     Ghost              => Static,
+     Subprogram_Variant => (Decreases => Last),
+     Pre                => Id <= Last and not Items (Id),
+     Post               => Cardinality (Items, Last) < Last
+   is
+   begin
+      if Id < Last then
+         Lemma_Count_Missing (Items, Id, Last - 1);
+      end if;
+   end Lemma_Count_Missing;
+
+   function Outside_Empty (Self : Program; Items : State_Set) return Boolean
+   is (for all Id in State_Id =>
+         (if Id not in 1 .. Self.Count then not Items (Id)))
+   with Ghost => Static;
+
    procedure Closure
      (Self              : Program;
       Seeds             : State_Set;
@@ -560,112 +755,142 @@ is
        not Reached (0)
        and (for all Id in 1 .. Self.Count => (if Seeds (Id) then Reached (Id)))
    is
+      pragma
+        Postcondition
+          (Static =>
+             Outside_Empty (Self, Reached)
+             and Epsilon_Closed (Self, Reached, At_First, At_Last)
+             and
+               (for all Id in State_Id =>
+                  Reached (Id)
+                  = Epsilon_Reach
+                      (Self, Seeds, At_First, At_Last, Id, Self.Count)));
+      --  Append-only worklist. Each reached state has exactly one slot;
+      --  processed slots form a prefix. No linked-list acyclicity assumption.
       Pending : Links := [others => 0];
-      Head    : State_Id := 0;
+      Tail    : State_Id := 0;
+      Done    : State_Id := 0;
       S       : State_Id;
+      Rank    : Links := [others => 0]
+      with Ghost => Static;
       type Depth_Array is array (State_Id) of Natural;
-      Parents : Links := [others => 0]
-      with Ghost;
       Depth   : Depth_Array := [others => 0]
-      with Ghost;
+      with Ghost => Static;
       Limit   : Natural range 0 .. Max_States := 0
-      with Ghost;
+      with Ghost => Static;
 
-      --  A finite path certificate: every nonseed reached state has a reached
-      --  epsilon predecessor of strictly smaller depth. Following predecessors
-      --  must therefore terminate at a seed. Anchors are checked on each edge.
       function Certified return Boolean
       is (for all Id in 1 .. Self.Count =>
             (if Reached (Id)
              then
-               (if Seeds (Id)
-                then Depth (Id) = 0
-                else
-                  Parents (Id) in 1 .. Self.Count
-                  and then Reached (Parents (Id))
-                  and then Depth (Parents (Id)) < Depth (Id)
-                  and then
-                    Epsilon_Edge (Self, Parents (Id), Id, At_First, At_Last))))
-      with Ghost;
-      function Bounded_Depth return Boolean
-      is (for all Id in 1 .. Self.Count =>
-            (if Reached (Id) then Depth (Id) <= Limit))
-      with Ghost;
+               Depth (Id) <= Limit
+               and then
+                 Epsilon_Reach
+                   (Self, Seeds, At_First, At_Last, Id, Depth (Id))))
+      with Ghost => Static;
+
       function Queue_Valid return Boolean
-      is (Head <= Self.Count
-          and then (Head = 0 or else Reached (Head))
+      is (Done <= Tail
+          and then Tail <= Self.Count
+          and then Tail = Cardinality (Reached, Self.Count)
+          and then
+            (for all I in 1 .. Tail =>
+               Pending (I) in 1 .. Self.Count
+               and then Reached (Pending (I))
+               and then Rank (Pending (I)) = I)
           and then
             (for all Id in 1 .. Self.Count =>
-               Pending (Id) <= Self.Count
-               and then (Pending (Id) = 0 or else Reached (Pending (Id)))))
-      with Ghost;
+               (if Reached (Id)
+                then
+                  Rank (Id) in 1 .. Tail and then Pending (Rank (Id)) = Id)))
+      with Ghost => Static;
+
+      function Processed_Closed return Boolean
+      is (for all I in 1 .. Done =>
+            (for all Target in 1 .. Self.Count =>
+               (if Epsilon_Edge (Self, Pending (I), Target, At_First, At_Last)
+                then Reached (Target))))
+      with Ghost => Static, Pre => Queue_Valid;
 
       procedure Push (Id : State_Id; From : State_Id)
       with
         Pre  =>
-          not Reached (0)
-          and Certified
-          and Queue_Valid
-          and Bounded_Depth
-          and Id <= Self.Count
-          and
-            (Id = 0
-             or else Seeds (Id)
-             or else
-               (From in 1 .. Self.Count
-                and then Reached (From)
-                and then Depth (From) < Limit
-                and then Epsilon_Edge (Self, From, Id, At_First, At_Last))),
+          (Static =>
+             Outside_Empty (Self, Reached)
+             and Certified
+             and Queue_Valid
+             and Id <= Self.Count
+             and
+               (Id = 0
+                or else Seeds (Id)
+                or else
+                  (From in 1 .. Self.Count
+                   and then Reached (From)
+                   and then Depth (From) < Limit
+                   and then
+                     Epsilon_Edge (Self, From, Id, At_First, At_Last)))),
         Post =>
-          Certified
-          and Queue_Valid
-          and Bounded_Depth
-          and not Reached (0)
-          and
-            (for all K in 1 .. Self.Count =>
-               (if Reached'Old (K)
-                then Reached (K) and Depth (K) = Depth'Old (K)))
-          and (if Id /= 0 then Reached (Id))
+          (Static =>
+             Certified
+             and Queue_Valid
+             and Outside_Empty (Self, Reached)
+             and Done = Done'Old
+             and Tail >= Tail'Old
+             and (for all I in 1 .. Tail'Old => Pending (I) = Pending'Old (I))
+             and
+               (for all K in 1 .. Self.Count =>
+                  (if Reached'Old (K)
+                   then Reached (K) and Depth (K) = Depth'Old (K)))
+             and (if Id /= 0 then Reached (Id)))
       is
+         Before : constant State_Set := Reached
+         with Ghost => Static;
       begin
          if Id /= 0 and then not Reached (Id) then
+            Lemma_Count_Missing (Reached, Id, Self.Count);
             if Seeds (Id) then
                Depth (Id) := 0;
-               Parents (Id) := 0;
             else
                Depth (Id) := Depth (From) + 1;
-               Parents (Id) := From;
             end if;
+            Tail := Tail + 1;
+            Pending (Tail) := Id;
+            Rank (Id) := Tail;
             Reached (Id) := True;
-            Pending (Id) := Head;
-            Head := Id;
+            Lemma_Add_Count (Before, Reached, Id, Self.Count);
          end if;
       end Push;
    begin
       Reached := [others => False];
+      Lemma_Empty_Count (Reached, Self.Count);
       for Id in 1 .. Self.Count loop
          if Seeds (Id) then
             Push (Id, 0);
          end if;
-         pragma Loop_Invariant (Certified and Queue_Valid and Bounded_Depth);
-         pragma Loop_Invariant (not Reached (0));
-         pragma Loop_Invariant (Limit = 0);
+         pragma Loop_Invariant (Static => Certified and Queue_Valid);
          pragma
            Loop_Invariant
-             (for all K in 1 .. Id => (if Seeds (K) then Reached (K)));
+             (Static =>
+                Outside_Empty (Self, Reached) and Limit = 0 and Done = 0);
+         pragma
+           Loop_Invariant
+             (Static =>
+                (for all K in 1 .. Id => (if Seeds (K) then Reached (K))));
       end loop;
-      --  Each state is enqueued at most once. The fixed iteration budget also
-      --  makes termination explicit for cyclic epsilon graphs such as (a*)*.
       for Iteration in 1 .. Self.Count loop
-         pragma Loop_Invariant (Certified and Queue_Valid and Bounded_Depth);
-         pragma Loop_Invariant (not Reached (0));
-         pragma Loop_Invariant (Limit = Iteration - 1);
+         pragma Loop_Invariant (Static => Certified and Queue_Valid);
+         pragma Loop_Invariant (Static => Processed_Closed);
+         pragma Loop_Invariant (Static => Outside_Empty (Self, Reached));
          pragma
            Loop_Invariant
-             (for all K in 1 .. Self.Count => (if Seeds (K) then Reached (K)));
-         exit when Head = 0;
-         S := Head;
-         Head := Pending (S);
+             (Static => Limit = Iteration - 1 and Done = Iteration - 1);
+         pragma
+           Loop_Invariant
+             (Static =>
+                (for all K in 1 .. Self.Count =>
+                   (if Seeds (K) then Reached (K))));
+         exit when Done = Tail;
+         S := Pending (Iteration);
          Limit := Iteration;
          case Self.Code (S).Op is
             when Split    =>
@@ -685,37 +910,222 @@ is
             when others   =>
                null;
          end case;
+         Done := Iteration;
       end loop;
-      pragma Assert (Certified);
+      pragma Assert (Static => Done = Tail);
+      pragma
+        Assert (Static => Epsilon_Closed (Self, Reached, At_First, At_Last));
+      Lemma_Closed_Reach (Self, Seeds, Reached, At_First, At_Last, Self.Count);
+      for Id in 1 .. Self.Count loop
+         if Reached (Id) then
+            Lemma_Reach_Monotone
+              (Self, Seeds, At_First, At_Last, Depth (Id), Self.Count);
+         end if;
+         pragma
+           Loop_Invariant
+             (Static =>
+                (for all K in 1 .. Id =>
+                   (if Reached (K)
+                    then
+                      Epsilon_Reach
+                        (Self, Seeds, At_First, At_Last, K, Self.Count))));
+      end loop;
    end Closure;
+
+   --  Set-based NFA semantics. These definitions neither call Advance nor
+   --  Closure nor Run; byte edges, epsilon paths, and text positions are
+   --  specified independently of the executable simulator.
+   function Model_Closure
+     (Self : Program; Seeds : State_Set; At_First, At_Last : Boolean)
+      return State_Set
+   with
+     Ghost => Static,
+     Post  =>
+       (for all Id in State_Id =>
+          Model_Closure'Result (Id)
+          = Epsilon_Reach (Self, Seeds, At_First, At_Last, Id, Self.Count))
+   is
+   begin
+      return
+        [for Id in State_Id =>
+           Epsilon_Reach (Self, Seeds, At_First, At_Last, Id, Self.Count)];
+   end Model_Closure;
+
+   function Model_Step
+     (Self : Program; Before : State_Set; Byte : Character; Restart : Boolean)
+      return State_Set
+   with
+     Ghost => Static,
+     Post  =>
+       (for all Target in State_Id =>
+          Model_Step'Result (Target)
+          = ((Restart and Target = Self.Start)
+             or else
+               (for some Source in 1 .. Self.Count =>
+                  Consumes_To (Self, Before, Byte, Source, Target))))
+   is
+   begin
+      return
+        [for Target in State_Id =>
+           (Restart and Target = Self.Start)
+           or else
+             (for some Source in 1 .. Self.Count =>
+                Consumes_To (Self, Before, Byte, Source, Target))];
+   end Model_Step;
+
+   function Model_Start (Self : Program) return State_Set
+   with
+     Ghost => Static,
+     Post  =>
+       (for all Id in State_Id => Model_Start'Result (Id) = (Id = Self.Start))
+   is
+   begin
+      return [for Id in State_Id => Id = Self.Start];
+   end Model_Start;
+
+   function Model_States
+     (Self : Program; Text : String; Whole : Boolean; Offset : Natural)
+      return State_Set
+   with
+     Ghost              => Static,
+     Pre                => Offset <= Text'Length,
+     Subprogram_Variant => (Decreases => Offset),
+     Post               =>
+       Model_States'Result
+       = (if Offset = 0
+          then Model_Closure (Self, Model_Start (Self), True, Text'Length = 0)
+          else
+            Model_Closure
+              (Self,
+               Model_Step
+                 (Self,
+                  Model_States (Self, Text, Whole, Offset - 1),
+                  Text (Text'First + (Offset - 1)),
+                  not Whole),
+               False,
+               Offset = Text'Length))
+   is
+   begin
+      if Offset = 0 then
+         return
+           Model_Closure (Self, Model_Start (Self), True, Text'Length = 0);
+      else
+         return
+           Model_Closure
+             (Self,
+              Model_Step
+                (Self,
+                 Model_States (Self, Text, Whole, Offset - 1),
+                 Text (Text'First + (Offset - 1)),
+                 not Whole),
+              False,
+              Offset = Text'Length);
+      end if;
+   end Model_States;
+
+   function Accepting (Self : Program; Items : State_Set) return Boolean
+   is (for some Id in 1 .. Self.Count =>
+         Items (Id) and Self.Code (Id).Op = Accept_State)
+   with Ghost => Static;
+
+   function NFA_Accepts
+     (Self : Program; Text : String; Whole : Boolean) return Boolean
+   is (Self.Valid
+       and then
+         (if Whole
+          then Accepting (Self, Model_States (Self, Text, Whole, Text'Length))
+          else
+            (for some Offset in 0 .. Text'Length =>
+               Accepting (Self, Model_States (Self, Text, Whole, Offset)))));
 
    function Run (Self : Program; Text : String; Whole : Boolean) return Boolean
    with
      Pre  => Internal_Valid (Self),
-     Post => (if not Self.Valid then not Run'Result)
+     Post => (Static => Run'Result = NFA_Accepts (Self, Text, Whole))
    is
       Current : State_Set;
       Seeds   : State_Set := [others => False];
+      Initial : constant State_Set := Model_Start (Self)
+      with Ghost => Static;
    begin
       if not Self.Valid then
          return False;
       end if;
       Seeds (Self.Start) := True;
+      pragma Assert (Static => Seeds = Initial);
+      Lemma_Reach_Extensional
+        (Self, Seeds, Initial, True, Text'Length = 0, Self.Count);
       Closure (Self, Seeds, True, Text'Length = 0, Current);
+      pragma
+        Assert
+          (Static =>
+             Current = Model_Closure (Self, Initial, True, Text'Length = 0));
+      pragma Assert (Static => Current = Model_States (Self, Text, Whole, 0));
       for Offset in 0 .. Text'Length loop
+         pragma
+           Loop_Invariant
+             (Static => Current = Model_States (Self, Text, Whole, Offset));
+         pragma
+           Loop_Invariant
+             (Static =>
+                (if not Whole
+                 then
+                   (for all Earlier in 0 .. Offset =>
+                      (if Earlier < Offset
+                       then
+                         not Accepting
+                               (Self,
+                                Model_States (Self, Text, Whole, Earlier))))));
          if not Whole or else Offset = Text'Length then
             for Id in 1 .. Self.Count loop
                if Current (Id) and then Self.Code (Id).Op = Accept_State then
                   return True;
                end if;
+               pragma
+                 Loop_Invariant
+                   (Static =>
+                      (for all K in 1 .. Id =>
+                         not (Current (K)
+                              and Self.Code (K).Op = Accept_State)));
             end loop;
          end if;
          exit when Offset = Text'Length;
-         Advance (Self, Current, Text (Text'First + Offset), Seeds);
-         if not Whole then
-            Seeds (Self.Start) := True;
-         end if;
-         Closure (Self, Seeds, False, Offset = Text'Length - 1, Current);
+         declare
+            Expected_Seeds : constant State_Set :=
+              Model_Step
+                (Self,
+                 Model_States (Self, Text, Whole, Offset),
+                 Text (Text'First + Offset),
+                 not Whole)
+            with Ghost => Static;
+         begin
+            Advance (Self, Current, Text (Text'First + Offset), Seeds);
+            if not Whole then
+               Seeds (Self.Start) := True;
+            end if;
+            pragma Assert (Static => Seeds = Expected_Seeds);
+            Lemma_Reach_Extensional
+              (Self,
+               Seeds,
+               Expected_Seeds,
+               False,
+               Offset = Text'Length - 1,
+               Self.Count);
+            Closure (Self, Seeds, False, Offset = Text'Length - 1, Current);
+            pragma
+              Assert
+                (Static =>
+                   Current
+                   = Model_Closure
+                       (Self,
+                        Expected_Seeds,
+                        False,
+                        Offset = Text'Length - 1));
+            pragma
+              Assert
+                (Static =>
+                   Current = Model_States (Self, Text, Whole, Offset + 1));
+         end;
       end loop;
       return False;
    end Run;
