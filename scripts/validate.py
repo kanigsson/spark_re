@@ -10,8 +10,10 @@ import time
 root = Path(__file__).resolve().parents[1]
 out = root / 'validation' / time.strftime('%Y%m%dT%H%M%SZ', time.gmtime())
 out.mkdir(parents=True)
-files = sorted(p for d in ['src', 'cli', 'common', 'tests']
-               for p in (root / d).rglob('*') if p.is_file() and '__pycache__' not in str(p))
+names = subprocess.check_output(
+    ['git', 'ls-files', '--cached', '--others', '--exclude-standard', '-z'], cwd=root
+).decode().split('\0')
+files = sorted(root / name for name in names if name)
 receipt = {'source_sha256': {str(p.relative_to(root)): hashlib.sha256(p.read_bytes()).hexdigest()
                              for p in files}, 'commands': []}
 for target in ['test', 'test-contracts', 'flow', 'prove']:

@@ -36,3 +36,50 @@ warnings and unproved checks treated as errors.
 Run `python3 scripts/validate.py` to repeat the full sequence and save command
 statuses, source hashes, elapsed times, and logs under ignored `validation/`.
 Original Silver logs are retained locally in `validation/silver/`.
+
+## Selected Gold properties — 2026-09-11
+
+Silver was committed first as `5f3d361`. The subsequent functional-proof pass
+reports **all 300 checks proved**, zero justified or unproved:
+
+| Category | Checks |
+| --- | ---: |
+| Data dependencies | 8 |
+| Initialization | 30 |
+| Runtime checks | 151 |
+| Assertions | 44 |
+| Functional contracts | 40 |
+| Termination | 27 |
+
+The new properties are:
+
+- `Compile` returns a valid program exactly when its status is `Success`.
+  The program invariant bounds every emitted instruction target by `Count`
+  and requires a successful program's entry point to be live. Recursive
+  compilation preserves this invariant even on capacity failure.
+- Default/invalid programs reject every input. `State_Count` stays within the
+  configured capacity.
+- `Advance` has an exact existential postcondition: a destination in the live
+  prefix (or sentinel zero) is selected iff an active consuming instruction
+  accepts the byte and points to that destination. This covers both directions
+  of the one-byte transition relation.
+- `Closure` preserves all input seeds in the live prefix and excludes sentinel
+  zero. The proved `Certified` invariant and exit assertion construct ghost
+  predecessor/depth arrays: each reached nonseed has a reached predecessor
+  connected by a permitted epsilon edge, with strictly smaller natural depth.
+  This is a finite path certificate back to a seed, including the truth of
+  start/end anchor conditions. `Bounded_Depth` bounds these depths by the
+  current closure iteration; worklist references remain reached/live.
+
+These are selected component-level Gold properties, not a full-language
+correctness theorem. There is no proved equivalence between the pattern syntax
+and compiled NFA, no closure-completeness theorem, no end-to-end search theorem,
+and no formal machine-cost model. The O((L+1)*S) runtime bound follows from
+bounded loops and the visited worklist design; termination itself is proved.
+
+The toolchain and proof settings are unchanged from Silver. Final validation
+uses `python3 scripts/validate.py`: release and executable-contract tests,
+flow analysis, then proof, with per-command logs/statuses and source hashes.
+The Ada tests additionally exercise every one of the 256 byte values through
+escaped classes, negated classes, and dot. The differential/CLI suite remains
+1,154 checks over 279 fixed/generated patterns in both modes.

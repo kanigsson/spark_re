@@ -39,6 +39,13 @@ begin
    Check ("()|a", "", True, True);
    Check (Offset_Pattern, Offset_Text, True, True);
    Check (".", [1 => ASCII.NUL], True, True);
+   for Byte in Character loop
+      --  Exercise every byte, including NUL, delimiters, high bytes and all
+      --  class punctuation through the class escape path.
+      Check ("[\" & Byte & "]", [1 => Byte], True, True);
+      Check ("[^\" & Byte & "]", [1 => Byte], False, False);
+      Check (".", [1 => Byte], True, True);
+   end loop;
    Tiny.Compile ("abcd", T, TS);
    pragma Assert (TS = Tiny.Node_Limit);
    Tiny.Compile ("a{4}", T, TS);

@@ -11,7 +11,7 @@ Use a matching Ada 2022 GNAT/GPRbuild and GNATprove installation.
 make test                 # library tests, Python re and grep -E oracles
 make test-contracts       # same tests with executable library contracts
 make flow                 # initialization and dependency analysis
-make prove                # runtime safety and termination
+make prove                # safety, termination, selected functional contracts
 make format
 printf '%s\n' src/foo.adb src/bar.ads | bin/spark-grep '\.adb$'
 bin/spark-grep -n 'procedure|function' src/*.ad?
@@ -114,13 +114,24 @@ subset, not a drop-in GNU grep or ripgrep replacement.
 
 ## Verification
 
-The initial Silver milestone proves absence of runtime errors, initialization,
+The Silver milestone proves absence of runtime errors, initialization,
 global dependencies, and termination for the complete default `Regex` instance.
+The subsequent Gold work proves selected functional properties: compile status
+agrees with validity; instruction targets stay inside the compiled prefix;
+invalid programs reject input; each byte transition is exact; and epsilon
+closure preserves its seeds and constructs finite predecessor-path certificates
+for all reached states, respecting anchors. Ghost certificates disappear in
+release builds. Contract-enabled builds execute them and can be much slower.
+
+These are component-level functional proofs. Full pattern-language equivalence,
+epsilon-closure completeness, and end-to-end search soundness/completeness are
+not claimed. Parsing and compilation semantics remain differential-test backed.
 The generic body is checked through that instance: custom instantiations need
 their own GNATprove run. CLI and shared I/O code are outside SPARK.
 
 `tests/test_regex.adb` exercises default invalid programs, arbitrary/high string
-bounds, empty/nullable cycles, classes, anchors, repetitions and capacity limits.
+bounds, empty/nullable cycles, all 256 bytes through escaped/negated classes and
+dot, anchors, repetitions and capacity limits.
 `tests/test_cli.py` deterministically compares 279 fixed/generated patterns in
 both search and whole-record modes against Python `re` and GNU `grep -aE` in
 locale C, and checks CLI output, statuses, framing and malformed inputs. It

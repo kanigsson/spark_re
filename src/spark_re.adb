@@ -155,7 +155,21 @@ is
         (Op    : Opcode;
          A, B  : State_Id;
          Id    : out State_Id;
-         Bytes : Byte_Set := [others => False]) is
+         Bytes : Byte_Set := [others => False])
+      with
+        Pre  =>
+          not Result.Valid
+          and Links_Valid (Result)
+          and A <= Result.Count
+          and B <= Result.Count,
+        Post =>
+          not Result.Valid
+          and (if Status'Old /= Success then Status = Status'Old)
+          and Links_Valid (Result)
+          and Result.Count >= Result.Count'Old
+          and Id <= Result.Count
+          and (if Status = Success then Id > 0)
+      is
       begin
          Id := 0;
          if Status /= Success then
@@ -172,7 +186,17 @@ is
 
       procedure Build
         (Id : Node_Id; Next : State_Id; Entry_State : out State_Id)
-      with Subprogram_Variant => (Decreases => Id)
+      with
+        Subprogram_Variant => (Decreases => Id),
+        Pre                =>
+          not Result.Valid and Links_Valid (Result) and Next <= Result.Count,
+        Post               =>
+          not Result.Valid
+          and (if Status'Old /= Success then Status = Status'Old)
+          and Links_Valid (Result)
+          and Result.Count >= Result.Count'Old
+          and Entry_State <= Result.Count
+          and (if Status = Success and Next > 0 then Entry_State > 0)
       is
          A, B, S : State_Id;
          N       : Node;
@@ -229,12 +253,30 @@ is
                   A := S;
                elsif N.Low <= N.High then
                   for K in 1 .. N.High - N.Low loop
+                     pragma
+                       Loop_Invariant
+                         (not Result.Valid and Links_Valid (Result));
+                     pragma
+                       Loop_Invariant
+                         (Result.Count >= Result.Count'Loop_Entry);
+                     pragma Loop_Invariant (A <= Result.Count);
+                     pragma
+                       Loop_Invariant
+                         (if Status = Success and Next > 0 then A > 0);
                      Build (N.Left, A, B);
                      Emit (Split, B, A, S);
                      A := S;
                   end loop;
                end if;
                for K in 1 .. N.Low loop
+                  pragma
+                    Loop_Invariant (not Result.Valid and Links_Valid (Result));
+                  pragma
+                    Loop_Invariant (Result.Count >= Result.Count'Loop_Entry);
+                  pragma Loop_Invariant (A <= Result.Count);
+                  pragma
+                    Loop_Invariant
+                      (if Status = Success and Next > 0 then A > 0);
                   Build (N.Left, A, B);
                   A := B;
                end loop;
@@ -443,19 +485,157 @@ is
    type State_Set is array (State_Id) of Boolean;
    type Links is array (State_Id) of State_Id;
 
+   function Consumes_To
+     (Self   : Program;
+      Before : State_Set;
+      Byte   : Character;
+      Source : Live_State;
+      Target : State_Id) return Boolean
+   is (Before (Source)
+       and then Self.Code (Source).Op = Consume
+       and then Self.Code (Source).Bytes (Byte)
+       and then Self.Code (Source).Next_1 = Target)
+   with Ghost;
+
+   --  Exact one-byte NFA transition: each destination is present iff some
+   --  active consuming instruction accepts this byte and points there.
+   procedure Advance
+     (Self   : Program;
+      Before : State_Set;
+      Byte   : Character;
+      After  : out State_Set)
+   with
+     Global => null,
+     Always_Terminates,
+     Post   =>
+       (for all Target in 0 .. Self.Count =>
+          After (Target)
+          = (for some Source in 1 .. Self.Count =>
+               Consumes_To (Self, Before, Byte, Source, Target)))
+   is
+   begin
+      After := [others => False];
+      for Id in 1 .. Self.Count loop
+         if Before (Id)
+           and then Self.Code (Id).Op = Consume
+           and then Self.Code (Id).Bytes (Byte)
+         then
+            After (Self.Code (Id).Next_1) := True;
+         end if;
+         pragma
+           Loop_Invariant
+             (for all Target in 0 .. Self.Count =>
+                After (Target)
+                = (for some Source in 1 .. Id =>
+                     Consumes_To (Self, Before, Byte, Source, Target)));
+      end loop;
+   end Advance;
+
+   function Epsilon_Edge
+     (Self              : Program;
+      Source            : Live_State;
+      Target            : State_Id;
+      At_First, At_Last : Boolean) return Boolean
+   is (Target /= 0
+       and then
+         (case Self.Code (Source).Op is
+            when Split    =>
+              Target = Self.Code (Source).Next_1
+              or Target = Self.Code (Source).Next_2,
+            when At_Start => At_First and Target = Self.Code (Source).Next_1,
+            when At_End   => At_Last and Target = Self.Code (Source).Next_1,
+            when others   => False))
+   with Ghost;
+
    procedure Closure
      (Self              : Program;
       Seeds             : State_Set;
       At_First, At_Last : Boolean;
       Reached           : out State_Set)
-   with Global => null, Always_Terminates
+   with
+     Global => null,
+     Always_Terminates,
+     Pre    => Links_Valid (Self),
+     Post   =>
+       not Reached (0)
+       and (for all Id in 1 .. Self.Count => (if Seeds (Id) then Reached (Id)))
    is
       Pending : Links := [others => 0];
       Head    : State_Id := 0;
       S       : State_Id;
-      procedure Push (Id : State_Id) is
+      type Depth_Array is array (State_Id) of Natural;
+      Parents : Links := [others => 0]
+      with Ghost;
+      Depth   : Depth_Array := [others => 0]
+      with Ghost;
+      Limit   : Natural range 0 .. Max_States := 0
+      with Ghost;
+
+      --  A finite path certificate: every nonseed reached state has a reached
+      --  epsilon predecessor of strictly smaller depth. Following predecessors
+      --  must therefore terminate at a seed. Anchors are checked on each edge.
+      function Certified return Boolean
+      is (for all Id in 1 .. Self.Count =>
+            (if Reached (Id)
+             then
+               (if Seeds (Id)
+                then Depth (Id) = 0
+                else
+                  Parents (Id) in 1 .. Self.Count
+                  and then Reached (Parents (Id))
+                  and then Depth (Parents (Id)) < Depth (Id)
+                  and then
+                    Epsilon_Edge (Self, Parents (Id), Id, At_First, At_Last))))
+      with Ghost;
+      function Bounded_Depth return Boolean
+      is (for all Id in 1 .. Self.Count =>
+            (if Reached (Id) then Depth (Id) <= Limit))
+      with Ghost;
+      function Queue_Valid return Boolean
+      is (Head <= Self.Count
+          and then (Head = 0 or else Reached (Head))
+          and then
+            (for all Id in 1 .. Self.Count =>
+               Pending (Id) <= Self.Count
+               and then (Pending (Id) = 0 or else Reached (Pending (Id)))))
+      with Ghost;
+
+      procedure Push (Id : State_Id; From : State_Id)
+      with
+        Pre  =>
+          not Reached (0)
+          and Certified
+          and Queue_Valid
+          and Bounded_Depth
+          and Id <= Self.Count
+          and
+            (Id = 0
+             or else Seeds (Id)
+             or else
+               (From in 1 .. Self.Count
+                and then Reached (From)
+                and then Depth (From) < Limit
+                and then Epsilon_Edge (Self, From, Id, At_First, At_Last))),
+        Post =>
+          Certified
+          and Queue_Valid
+          and Bounded_Depth
+          and not Reached (0)
+          and
+            (for all K in 1 .. Self.Count =>
+               (if Reached'Old (K)
+                then Reached (K) and Depth (K) = Depth'Old (K)))
+          and (if Id /= 0 then Reached (Id))
+      is
       begin
          if Id /= 0 and then not Reached (Id) then
+            if Seeds (Id) then
+               Depth (Id) := 0;
+               Parents (Id) := 0;
+            else
+               Depth (Id) := Depth (From) + 1;
+               Parents (Id) := From;
+            end if;
             Reached (Id) := True;
             Pending (Id) := Head;
             Head := Id;
@@ -465,37 +645,54 @@ is
       Reached := [others => False];
       for Id in 1 .. Self.Count loop
          if Seeds (Id) then
-            Push (Id);
+            Push (Id, 0);
          end if;
+         pragma Loop_Invariant (Certified and Queue_Valid and Bounded_Depth);
+         pragma Loop_Invariant (not Reached (0));
+         pragma Loop_Invariant (Limit = 0);
+         pragma
+           Loop_Invariant
+             (for all K in 1 .. Id => (if Seeds (K) then Reached (K)));
       end loop;
       --  Each state is enqueued at most once. The fixed iteration budget also
       --  makes termination explicit for cyclic epsilon graphs such as (a*)*.
       for Iteration in 1 .. Self.Count loop
+         pragma Loop_Invariant (Certified and Queue_Valid and Bounded_Depth);
+         pragma Loop_Invariant (not Reached (0));
+         pragma Loop_Invariant (Limit = Iteration - 1);
+         pragma
+           Loop_Invariant
+             (for all K in 1 .. Self.Count => (if Seeds (K) then Reached (K)));
          exit when Head = 0;
          S := Head;
          Head := Pending (S);
+         Limit := Iteration;
          case Self.Code (S).Op is
             when Split    =>
-               Push (Self.Code (S).Next_1);
-               Push (Self.Code (S).Next_2);
+               Push (Self.Code (S).Next_1, S);
+               Push (Self.Code (S).Next_2, S);
 
             when At_Start =>
                if At_First then
-                  Push (Self.Code (S).Next_1);
+                  Push (Self.Code (S).Next_1, S);
                end if;
 
             when At_End   =>
                if At_Last then
-                  Push (Self.Code (S).Next_1);
+                  Push (Self.Code (S).Next_1, S);
                end if;
 
             when others   =>
                null;
          end case;
       end loop;
+      pragma Assert (Certified);
    end Closure;
 
    function Run (Self : Program; Text : String; Whole : Boolean) return Boolean
+   with
+     Pre  => Internal_Valid (Self),
+     Post => (if not Self.Valid then not Run'Result)
    is
       Current : State_Set;
       Seeds   : State_Set := [others => False];
@@ -514,15 +711,7 @@ is
             end loop;
          end if;
          exit when Offset = Text'Length;
-         Seeds := [others => False];
-         for Id in 1 .. Self.Count loop
-            if Current (Id)
-              and then Self.Code (Id).Op = Consume
-              and then Self.Code (Id).Bytes (Text (Text'First + Offset))
-            then
-               Seeds (Self.Code (Id).Next_1) := True;
-            end if;
-         end loop;
+         Advance (Self, Current, Text (Text'First + Offset), Seeds);
          if not Whole then
             Seeds (Self.Start) := True;
          end if;
