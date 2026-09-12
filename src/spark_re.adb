@@ -19,29 +19,261 @@ is
       Unlimited   : Boolean := False;
    end record;
    type Tree is array (Live_Node) of Node;
+   function Node_Valid (N : Node; Before : Node_Id) return Boolean
+   is (N.Left <= Before
+       and then N.Right <= Before
+       and then
+         (case N.Kind is
+            when Concat_Node | Alt_Node => N.Left > 0 and N.Right > 0,
+            when Repeat_Node            =>
+              N.Left > 0 and (N.Unlimited or N.Low <= N.High),
+            when others                 => True))
+   with Ghost => Static;
+
+   function Tree_Valid (Nodes : Tree) return Boolean
+   is (for all Id in Live_Node => Node_Valid (Nodes (Id), Id - 1))
+   with Ghost => Static;
+
+   --  Spans use offsets in the whole input, not Ada array indices.
+   function Matches
+     (Nodes : Tree; Id : Live_Node; Text : String; First, Last : Natural)
+      return Boolean
+   with
+     Ghost              => Static,
+     Pre                =>
+       Tree_Valid (Nodes) and First <= Last and Last <= Text'Length,
+     Subprogram_Variant =>
+       (Decreases => Id,
+        Decreases => Natural'(Max_Repetition + 1),
+        Decreases => Natural'(Max_Repetition + 1),
+        Decreases => Last - First);
+
+   function Repeated_Matches
+     (Nodes       : Tree;
+      Id          : Live_Node;
+      Text        : String;
+      First, Last : Natural;
+      Low, High   : Natural;
+      Unlimited   : Boolean) return Boolean
+   with
+     Ghost              => Static,
+     Pre                =>
+       Tree_Valid (Nodes)
+       and Nodes (Id).Kind = Repeat_Node
+       and First <= Last
+       and Last <= Text'Length
+       and Low <= Max_Repetition
+       and High <= Max_Repetition
+       and (Unlimited or Low <= High),
+     Subprogram_Variant =>
+       (Decreases => Id,
+        Decreases => Low,
+        Decreases => High,
+        Decreases => Last - First);
+
+   function Matches
+     (Nodes : Tree; Id : Live_Node; Text : String; First, Last : Natural)
+      return Boolean
+   is (case Nodes (Id).Kind is
+         when Empty_Node  => First = Last,
+         when Bytes_Node  =>
+           First < Last
+           and then Last - First = 1
+           and then Nodes (Id).Bytes (Text (Text'First + First)),
+         when Start_Node  => First = Last and First = 0,
+         when End_Node    => First = Last and Last = Text'Length,
+         when Concat_Node =>
+           (for some Middle in First .. Last =>
+              Matches (Nodes, Nodes (Id).Left, Text, First, Middle)
+              and then Matches (Nodes, Nodes (Id).Right, Text, Middle, Last)),
+         when Alt_Node    =>
+           Matches (Nodes, Nodes (Id).Left, Text, First, Last)
+           or else Matches (Nodes, Nodes (Id).Right, Text, First, Last),
+         when Repeat_Node =>
+           Repeated_Matches
+             (Nodes,
+              Id,
+              Text,
+              First,
+              Last,
+              Nodes (Id).Low,
+              Nodes (Id).High,
+              Nodes (Id).Unlimited));
+
+   --  Mandatory copies may be empty. After the lower bound is met,
+   --  unbounded repetition omits empty copies and advances on each copy.
+   function Repeated_Matches
+     (Nodes       : Tree;
+      Id          : Live_Node;
+      Text        : String;
+      First, Last : Natural;
+      Low, High   : Natural;
+      Unlimited   : Boolean) return Boolean
+   is (if Low > 0
+       then
+         (for some Middle in First .. Last =>
+            Matches (Nodes, Nodes (Id).Left, Text, First, Middle)
+            and then
+              Repeated_Matches
+                (Nodes,
+                 Id,
+                 Text,
+                 Middle,
+                 Last,
+                 Low - 1,
+                 (if Unlimited then High else High - 1),
+                 Unlimited))
+       elsif First = Last
+       then True
+       elsif Unlimited
+       then
+         (for some Middle in First + 1 .. Last =>
+            Matches (Nodes, Nodes (Id).Left, Text, First, Middle)
+            and then
+              Repeated_Matches (Nodes, Id, Text, Middle, Last, 0, High, True))
+       elsif High > 0
+       then
+         (for some Middle in First .. Last =>
+            Matches (Nodes, Nodes (Id).Left, Text, First, Middle)
+            and then
+              Repeated_Matches
+                (Nodes, Id, Text, Middle, Last, 0, High - 1, False))
+       else False);
+
+   procedure Lemma_Empty_Repetition
+     (Nodes     : Tree;
+      Id        : Live_Node;
+      Text      : String;
+      Position  : Natural;
+      Low, High : Natural;
+      Unlimited : Boolean)
+   with
+     Ghost              => Static,
+     Pre                =>
+       Tree_Valid (Nodes)
+       and Nodes (Id).Kind = Repeat_Node
+       and Position <= Text'Length
+       and Low <= Max_Repetition
+       and High <= Max_Repetition
+       and (Unlimited or Low <= High),
+     Post               =>
+       Repeated_Matches
+         (Nodes, Id, Text, Position, Position, Low, High, Unlimited)
+       = (Low = 0
+          or else Matches (Nodes, Nodes (Id).Left, Text, Position, Position)),
+     Subprogram_Variant => (Decreases => Low)
+   is
+   begin
+      if Low > 0 then
+         Lemma_Empty_Repetition
+           (Nodes,
+            Id,
+            Text,
+            Position,
+            Low - 1,
+            (if Unlimited then High else High - 1),
+            Unlimited);
+      end if;
+   end Lemma_Empty_Repetition;
+
+   function Nullable
+     (Nodes : Tree; Id : Live_Node; At_Start, At_End : Boolean) return Boolean
+   is (case Nodes (Id).Kind is
+         when Empty_Node  => True,
+         when Bytes_Node  => False,
+         when Start_Node  => At_Start,
+         when End_Node    => At_End,
+         when Concat_Node =>
+           Nullable (Nodes, Nodes (Id).Left, At_Start, At_End)
+           and then Nullable (Nodes, Nodes (Id).Right, At_Start, At_End),
+         when Alt_Node    =>
+           Nullable (Nodes, Nodes (Id).Left, At_Start, At_End)
+           or else Nullable (Nodes, Nodes (Id).Right, At_Start, At_End),
+         when Repeat_Node =>
+           Nodes (Id).Low = 0
+           or else Nullable (Nodes, Nodes (Id).Left, At_Start, At_End))
+   with
+     Ghost              => Static,
+     Pre                => Tree_Valid (Nodes),
+     Subprogram_Variant => (Decreases => Id);
+
+   procedure Lemma_Nullable
+     (Nodes : Tree; Id : Live_Node; Text : String; Position : Natural)
+   with
+     Ghost              => Static,
+     Pre                => Tree_Valid (Nodes) and Position <= Text'Length,
+     Post               =>
+       Matches (Nodes, Id, Text, Position, Position)
+       = Nullable (Nodes, Id, Position = 0, Position = Text'Length),
+     Subprogram_Variant => (Decreases => Id)
+   is
+      N : constant Node := Nodes (Id);
+   begin
+      case N.Kind is
+         when Concat_Node | Alt_Node =>
+            Lemma_Nullable (Nodes, N.Left, Text, Position);
+            Lemma_Nullable (Nodes, N.Right, Text, Position);
+
+         when Repeat_Node            =>
+            Lemma_Nullable (Nodes, N.Left, Text, Position);
+            Lemma_Empty_Repetition
+              (Nodes, Id, Text, Position, N.Low, N.High, N.Unlimited);
+
+         when others                 =>
+            null;
+      end case;
+   end Lemma_Nullable;
+
    type Frame is record
       Expr, Term, Atom : Node_Id := 0;
       Quantified       : Boolean := False;
    end record;
    type Frame_Array is array (Live_Node) of Frame;
 
-   procedure Compile
-     (Pattern : String; Result : out Program; Status : out Compile_Status)
+   procedure Parse
+     (Pattern : String;
+      Nodes   : out Tree;
+      Root    : out Node_Id;
+      Status  : out Compile_Status)
    is
-      Nodes      : Tree := [others => <>];
-      Used       : Node_Id := 0;
-      Frames     : Frame_Array := [others => <>];
-      Top        : Live_Node := 1;
-      Pos        : Natural := 0;
-      Root       : Node_Id;
-      Expansions : Natural range 0 .. 65_536 := 0;
+      pragma
+        Postcondition
+          (Static =>
+             Tree_Valid (Nodes) and (if Status = Success then Root /= 0));
+      Used   : Node_Id := 0;
+      Frames : Frame_Array := [others => <>];
+      Top    : Live_Node := 1;
+      Pos    : Natural := 0;
 
       function Peek return Character
       is (if Pos < Pattern'Length
           then Pattern (Pattern'First + Pos)
           else Character'Val (0));
 
+      function Frames_Valid return Boolean
+      is (for all F in Live_Node =>
+            Frames (F).Expr <= Used
+            and Frames (F).Term <= Used
+            and Frames (F).Atom <= Used)
+      with Ghost => Static;
+
       procedure Add (N : Node; Id : out Node_Id) is
+         pragma
+           Precondition
+             (Static =>
+                Tree_Valid (Nodes)
+                and (if Status = Success then Node_Valid (N, Used)));
+         pragma
+           Postcondition
+             (Static =>
+                Tree_Valid (Nodes)
+                and Used >= Used'Old
+                and Id <= Used
+                and
+                  (if Status = Success
+                   then Id = Used and Used = Used'Old + 1 and Nodes (Id) = N)
+                and (for all K in 1 .. Used'Old => Nodes (K) = Nodes'Old (K))
+                and (if Status'Old /= Success then Status = Status'Old));
       begin
          Id := 0;
          if Status /= Success then
@@ -57,6 +289,14 @@ is
       end Add;
 
       procedure Flush_Atom is
+         pragma Precondition (Static => Tree_Valid (Nodes) and Frames_Valid);
+         pragma
+           Postcondition
+             (Static =>
+                Tree_Valid (Nodes)
+                and Frames_Valid
+                and Used >= Used'Old
+                and (if Status'Old /= Success then Status = Status'Old));
          Id : Node_Id;
       begin
          if Frames (Top).Atom /= 0 then
@@ -77,6 +317,15 @@ is
       end Flush_Atom;
 
       procedure Flush_Term is
+         pragma Precondition (Static => Tree_Valid (Nodes) and Frames_Valid);
+         pragma
+           Postcondition
+             (Static =>
+                Tree_Valid (Nodes)
+                and Frames_Valid
+                and Used >= Used'Old
+                and (if Status = Success then Frames (Top).Expr /= 0)
+                and (if Status'Old /= Success then Status = Status'Old));
          Id : Node_Id;
       begin
          Flush_Atom;
@@ -151,167 +400,9 @@ is
          end if;
       end Class_Byte;
 
-      procedure Emit
-        (Op    : Opcode;
-         A, B  : State_Id;
-         Id    : out State_Id;
-         Bytes : Byte_Set := [others => False])
-      with
-        Pre  =>
-          not Result.Valid
-          and Links_Valid (Result)
-          and A <= Result.Count
-          and B <= Result.Count,
-        Post =>
-          not Result.Valid
-          and (if Status'Old /= Success then Status = Status'Old)
-          and Links_Valid (Result)
-          and Result.Count >= Result.Count'Old
-          and Id <= Result.Count
-          and (if Status = Success then Id > 0)
-      is
-         pragma
-           Postcondition
-             (Static =>
-                (for all K in 1 .. Result.Count'Old =>
-                   Result.Code (K) = Result.Code'Old (K))
-                and (if Id /= 0 then Id > Result.Count'Old)
-                and
-                  (if Status = Success
-                   then
-                     Id = Result.Count
-                     and Result.Code (Id) = Instruction'(Op, Bytes, A, B)));
-      begin
-         Id := 0;
-         if Status /= Success then
-            return;
-         end if;
-         if Result.Count = Max_States then
-            Status := State_Limit;
-            return;
-         end if;
-         Result.Count := Result.Count + 1;
-         Result.Code (Result.Count) := (Op, Bytes, A, B);
-         Id := Result.Count;
-      end Emit;
-
-      procedure Build
-        (Id : Node_Id; Next : State_Id; Entry_State : out State_Id)
-      with
-        Subprogram_Variant => (Decreases => Id),
-        Pre                =>
-          not Result.Valid and Links_Valid (Result) and Next <= Result.Count,
-        Post               =>
-          not Result.Valid
-          and (if Status'Old /= Success then Status = Status'Old)
-          and Links_Valid (Result)
-          and Result.Count >= Result.Count'Old
-          and Entry_State <= Result.Count
-          and (if Status = Success and Next > 0 then Entry_State > 0)
-      is
-         pragma
-           Postcondition
-             (Static =>
-                (for all K in 1 .. Result.Count'Old =>
-                   Result.Code (K) = Result.Code'Old (K)));
-         A, B, S : State_Id;
-         N       : Node;
-      begin
-         Entry_State := 0;
-         if Status /= Success then
-            return;
-         end if;
-         if Id = 0 then
-            Status := Syntax_Error;
-            return;
-         end if;
-         if Expansions = 65_536 then
-            Status := Expansion_Limit;
-            return;
-         end if;
-         Expansions := Expansions + 1;
-         N := Nodes (Id);
-         --  Check the tree ordering locally, including on every recursive edge.
-         if N.Left >= Id or else N.Right >= Id then
-            Status := Syntax_Error;
-            return;
-         end if;
-         case N.Kind is
-            when Empty_Node  =>
-               Entry_State := Next;
-
-            when Bytes_Node  =>
-               Emit (Consume, Next, 0, Entry_State, N.Bytes);
-
-            when Start_Node  =>
-               Emit (At_Start, Next, 0, Entry_State);
-
-            when End_Node    =>
-               Emit (At_End, Next, 0, Entry_State);
-
-            when Concat_Node =>
-               Build (N.Right, Next, A);
-               Build (N.Left, A, Entry_State);
-
-            when Alt_Node    =>
-               Build (N.Left, Next, A);
-               Build (N.Right, Next, B);
-               Emit (Split, A, B, Entry_State);
-
-            when Repeat_Node =>
-               A := Next;
-               if N.Unlimited then
-                  Emit (Split, 0, Next, S);
-                  Build (N.Left, S, B);
-                  if S /= 0 then
-                     Result.Code (S).Next_1 := B;
-                  end if;
-                  A := S;
-               elsif N.Low <= N.High then
-                  for K in 1 .. N.High - N.Low loop
-                     pragma
-                       Loop_Invariant
-                         (not Result.Valid and Links_Valid (Result));
-                     pragma
-                       Loop_Invariant
-                         (Result.Count >= Result.Count'Loop_Entry);
-                     pragma
-                       Loop_Invariant
-                         (Static =>
-                            (for all J in 1 .. Result.Count'Loop_Entry =>
-                               Result.Code (J) = Result.Code'Loop_Entry (J)));
-                     pragma Loop_Invariant (A <= Result.Count);
-                     pragma
-                       Loop_Invariant
-                         (if Status = Success and Next > 0 then A > 0);
-                     Build (N.Left, A, B);
-                     Emit (Split, B, A, S);
-                     A := S;
-                  end loop;
-               end if;
-               for K in 1 .. N.Low loop
-                  pragma
-                    Loop_Invariant (not Result.Valid and Links_Valid (Result));
-                  pragma
-                    Loop_Invariant (Result.Count >= Result.Count'Loop_Entry);
-                  pragma
-                    Loop_Invariant
-                      (Static =>
-                         (for all J in 1 .. Result.Count'Loop_Entry =>
-                            Result.Code (J) = Result.Code'Loop_Entry (J)));
-                  pragma Loop_Invariant (A <= Result.Count);
-                  pragma
-                    Loop_Invariant
-                      (if Status = Success and Next > 0 then A > 0);
-                  Build (N.Left, A, B);
-                  A := B;
-               end loop;
-               Entry_State := A;
-         end case;
-      end Build;
-
    begin
-      Result := (others => <>);
+      Nodes := [others => <>];
+      Root := 0;
       Status := Success;
       if Pattern'Length > Max_Pattern_Length then
          Status := Pattern_Too_Long;
@@ -319,6 +410,7 @@ is
       end if;
       while Pos < Pattern'Length and then Status = Success loop
          pragma Loop_Invariant (Pos in Pos'Loop_Entry .. Pattern'Length);
+         pragma Loop_Invariant (Static => Tree_Valid (Nodes) and Frames_Valid);
          pragma Loop_Variant (Decreases => Pattern'Length - Pos);
          declare
             C  : constant Character := Peek;
@@ -490,17 +582,1419 @@ is
          else
             Flush_Term;
             Root := Frames (1).Expr;
-            declare
-               Final, Entry_State : State_Id;
-            begin
-               Emit (Accept_State, 0, 0, Final);
-               Build (Root, Final, Entry_State);
-               pragma Assert (Expansions <= 65_536);
-               Result.Start := Entry_State;
-            end;
+            pragma Assert (Root <= Used);
+
          end if;
       end if;
+   end Parse;
+
+   --  A fragment can leave its newly allocated interval only at Next.
+   --  It contains neither an accepting instruction nor a dead instruction.
+   function Fragment_Closed
+     (Self : Program; Base, Next : State_Id) return Boolean
+   is (for all K in 1 .. Self.Count =>
+         (if K > Base
+          then
+            Self.Code (K).Op in Consume | Split | At_Start | At_End
+            and then
+              (Self.Code (K).Next_1 = Next
+               or Self.Code (K).Next_1 in Base + 1 .. Self.Count)
+            and then
+              (if Self.Code (K).Op = Split
+               then
+                 Self.Code (K).Next_2 = Next
+                 or Self.Code (K).Next_2 in Base + 1 .. Self.Count)))
+   with Ghost => Static;
+
+   --  The larger counter can describe a path through every text boundary
+   --  without multiplying a string length into a machine Natural.
+   subtype Path_Steps is Long_Long_Integer range 0 .. Long_Long_Integer'Last;
+
+   function Fragment_Path
+     (Code              : Code_Array;
+      Entry_State, Stop : State_Id;
+      Text              : String;
+      First, Last       : Natural;
+      Fuel              : Path_Steps) return Boolean
+   is (if Entry_State = Stop
+       then First = Last
+       elsif Entry_State = 0 or else Fuel = 0
+       then False
+       else
+         (case Code (Entry_State).Op is
+            when Dead | Accept_State => False,
+            when Consume             =>
+              First < Last
+              and then Code (Entry_State).Bytes (Text (Text'First + First))
+              and then
+                Fragment_Path
+                  (Code,
+                   Code (Entry_State).Next_1,
+                   Stop,
+                   Text,
+                   First + 1,
+                   Last,
+                   Fuel - 1),
+            when Split               =>
+              Fragment_Path
+                (Code,
+                 Code (Entry_State).Next_1,
+                 Stop,
+                 Text,
+                 First,
+                 Last,
+                 Fuel - 1)
+              or else
+                Fragment_Path
+                  (Code,
+                   Code (Entry_State).Next_2,
+                   Stop,
+                   Text,
+                   First,
+                   Last,
+                   Fuel - 1),
+            when At_Start            =>
+              First = 0
+              and then
+                Fragment_Path
+                  (Code,
+                   Code (Entry_State).Next_1,
+                   Stop,
+                   Text,
+                   First,
+                   Last,
+                   Fuel - 1),
+            when At_End              =>
+              First = Text'Length
+              and then
+                Fragment_Path
+                  (Code,
+                   Code (Entry_State).Next_1,
+                   Stop,
+                   Text,
+                   First,
+                   Last,
+                   Fuel - 1)))
+   with
+     Ghost              => Static,
+     Pre                => First <= Last and Last <= Text'Length,
+     Subprogram_Variant => (Decreases => Fuel);
+
+   procedure Lemma_Path_Monotone
+     (Code              : Code_Array;
+      Entry_State, Stop : State_Id;
+      Text              : String;
+      First, Last       : Natural;
+      Small, Large      : Path_Steps)
+   with
+     Ghost              => Static,
+     Pre                =>
+       First <= Last and Last <= Text'Length and Small <= Large,
+     Post               =>
+       (if Fragment_Path (Code, Entry_State, Stop, Text, First, Last, Small)
+        then
+          Fragment_Path (Code, Entry_State, Stop, Text, First, Last, Large)),
+     Subprogram_Variant => (Decreases => Small)
+   is
+   begin
+      if Entry_State /= Stop and Entry_State /= 0 and Small > 0 then
+         case Code (Entry_State).Op is
+            when Consume             =>
+               if First < Last then
+                  Lemma_Path_Monotone
+                    (Code,
+                     Code (Entry_State).Next_1,
+                     Stop,
+                     Text,
+                     First + 1,
+                     Last,
+                     Small - 1,
+                     Large - 1);
+               end if;
+
+            when Split               =>
+               Lemma_Path_Monotone
+                 (Code,
+                  Code (Entry_State).Next_1,
+                  Stop,
+                  Text,
+                  First,
+                  Last,
+                  Small - 1,
+                  Large - 1);
+               Lemma_Path_Monotone
+                 (Code,
+                  Code (Entry_State).Next_2,
+                  Stop,
+                  Text,
+                  First,
+                  Last,
+                  Small - 1,
+                  Large - 1);
+
+            when At_Start | At_End   =>
+               Lemma_Path_Monotone
+                 (Code,
+                  Code (Entry_State).Next_1,
+                  Stop,
+                  Text,
+                  First,
+                  Last,
+                  Small - 1,
+                  Large - 1);
+
+            when Dead | Accept_State =>
+               null;
+         end case;
+      end if;
+   end Lemma_Path_Monotone;
+
+   procedure Lemma_Path_Frame
+     (Before, After           : Program;
+      Base, Entry_State, Stop : State_Id;
+      Text                    : String;
+      First, Last             : Natural;
+      Fuel                    : Path_Steps)
+   with
+     Ghost              => Static,
+     Pre                =>
+       First <= Last
+       and Last <= Text'Length
+       and Stop <= Base
+       and Base <= Before.Count
+       and
+         (Entry_State = Stop
+          or (Entry_State > Base and Entry_State <= Before.Count))
+       and Fragment_Closed (Before, Base, Stop)
+       and
+         (for all K in 1 .. Before.Count =>
+            (if K > Base then Before.Code (K) = After.Code (K))),
+     Post               =>
+       Fragment_Path (Before.Code, Entry_State, Stop, Text, First, Last, Fuel)
+       = Fragment_Path
+           (After.Code, Entry_State, Stop, Text, First, Last, Fuel),
+     Subprogram_Variant => (Decreases => Fuel)
+   is
+   begin
+      if Entry_State /= Stop and Fuel > 0 then
+         case Before.Code (Entry_State).Op is
+            when Consume             =>
+               if First < Last then
+                  Lemma_Path_Frame
+                    (Before,
+                     After,
+                     Base,
+                     Before.Code (Entry_State).Next_1,
+                     Stop,
+                     Text,
+                     First + 1,
+                     Last,
+                     Fuel - 1);
+               end if;
+
+            when Split               =>
+               Lemma_Path_Frame
+                 (Before,
+                  After,
+                  Base,
+                  Before.Code (Entry_State).Next_1,
+                  Stop,
+                  Text,
+                  First,
+                  Last,
+                  Fuel - 1);
+               Lemma_Path_Frame
+                 (Before,
+                  After,
+                  Base,
+                  Before.Code (Entry_State).Next_2,
+                  Stop,
+                  Text,
+                  First,
+                  Last,
+                  Fuel - 1);
+
+            when At_Start | At_End   =>
+               Lemma_Path_Frame
+                 (Before,
+                  After,
+                  Base,
+                  Before.Code (Entry_State).Next_1,
+                  Stop,
+                  Text,
+                  First,
+                  Last,
+                  Fuel - 1);
+
+            when Dead | Accept_State =>
+               null;
+         end case;
+      end if;
+   end Lemma_Path_Frame;
+
+   procedure Lemma_Path_Compose
+     (Self                            : Program;
+      Base, Entry_State, Middle, Stop : State_Id;
+      Text                            : String;
+      First, Cut, Last                : Natural;
+      Left_Fuel, Right_Fuel           : Path_Steps)
+   with
+     Ghost              => Static,
+     Pre                =>
+       First <= Cut
+       and then Cut <= Last
+       and then Last <= Text'Length
+       and then Middle <= Base
+       and then Stop <= Base
+       and then Base <= Self.Count
+       and then
+         (Entry_State = Middle
+          or (Entry_State > Base and then Entry_State <= Self.Count))
+       and then Fragment_Closed (Self, Base, Middle)
+       and then Left_Fuel <= Path_Steps'Last - Right_Fuel
+       and then
+         Fragment_Path
+           (Self.Code, Entry_State, Middle, Text, First, Cut, Left_Fuel)
+       and then
+         Fragment_Path (Self.Code, Middle, Stop, Text, Cut, Last, Right_Fuel),
+     Post               =>
+       Fragment_Path
+         (Self.Code,
+          Entry_State,
+          Stop,
+          Text,
+          First,
+          Last,
+          Left_Fuel + Right_Fuel),
+     Subprogram_Variant => (Decreases => Left_Fuel)
+   is
+   begin
+      if Entry_State = Middle then
+         Lemma_Path_Monotone
+           (Self.Code,
+            Middle,
+            Stop,
+            Text,
+            Cut,
+            Last,
+            Right_Fuel,
+            Left_Fuel + Right_Fuel);
+      else
+         case Self.Code (Entry_State).Op is
+            when Consume             =>
+               Lemma_Path_Compose
+                 (Self,
+                  Base,
+                  Self.Code (Entry_State).Next_1,
+                  Middle,
+                  Stop,
+                  Text,
+                  First + 1,
+                  Cut,
+                  Last,
+                  Left_Fuel - 1,
+                  Right_Fuel);
+
+            when Split               =>
+               if Fragment_Path
+                    (Self.Code,
+                     Self.Code (Entry_State).Next_1,
+                     Middle,
+                     Text,
+                     First,
+                     Cut,
+                     Left_Fuel - 1)
+               then
+                  Lemma_Path_Compose
+                    (Self,
+                     Base,
+                     Self.Code (Entry_State).Next_1,
+                     Middle,
+                     Stop,
+                     Text,
+                     First,
+                     Cut,
+                     Last,
+                     Left_Fuel - 1,
+                     Right_Fuel);
+               else
+                  Lemma_Path_Compose
+                    (Self,
+                     Base,
+                     Self.Code (Entry_State).Next_2,
+                     Middle,
+                     Stop,
+                     Text,
+                     First,
+                     Cut,
+                     Last,
+                     Left_Fuel - 1,
+                     Right_Fuel);
+               end if;
+
+            when At_Start | At_End   =>
+               Lemma_Path_Compose
+                 (Self,
+                  Base,
+                  Self.Code (Entry_State).Next_1,
+                  Middle,
+                  Stop,
+                  Text,
+                  First,
+                  Cut,
+                  Last,
+                  Left_Fuel - 1,
+                  Right_Fuel);
+
+            when Dead | Accept_State =>
+               null;
+         end case;
+      end if;
+   end Lemma_Path_Compose;
+
+   procedure Lemma_Path_Decompose
+     (Self                            : Program;
+      Base, Entry_State, Middle, Stop : State_Id;
+      Text                            : String;
+      First, Last                     : Natural;
+      Fuel                            : Path_Steps;
+      Cut                             : out Natural;
+      Left_Fuel                       : out Path_Steps)
+   with
+     Ghost              => Static,
+     Pre                =>
+       First <= Last
+       and then Last <= Text'Length
+       and then Middle <= Base
+       and then Stop <= Base
+       and then Base <= Self.Count
+       and then
+         (Entry_State = Middle
+          or (Entry_State > Base and then Entry_State <= Self.Count))
+       and then Fragment_Closed (Self, Base, Middle)
+       and then
+         Fragment_Path (Self.Code, Entry_State, Stop, Text, First, Last, Fuel),
+     Post               =>
+       Cut in First .. Last
+       and then Left_Fuel <= Fuel
+       and then
+         Fragment_Path
+           (Self.Code, Entry_State, Middle, Text, First, Cut, Left_Fuel)
+       and then
+         Fragment_Path
+           (Self.Code, Middle, Stop, Text, Cut, Last, Fuel - Left_Fuel),
+     Subprogram_Variant => (Decreases => Fuel)
+   is
+   begin
+      if Entry_State = Middle then
+         Cut := First;
+         Left_Fuel := 0;
+      else
+         case Self.Code (Entry_State).Op is
+            when Consume             =>
+               Lemma_Path_Decompose
+                 (Self,
+                  Base,
+                  Self.Code (Entry_State).Next_1,
+                  Middle,
+                  Stop,
+                  Text,
+                  First + 1,
+                  Last,
+                  Fuel - 1,
+                  Cut,
+                  Left_Fuel);
+
+            when Split               =>
+               if Fragment_Path
+                    (Self.Code,
+                     Self.Code (Entry_State).Next_1,
+                     Stop,
+                     Text,
+                     First,
+                     Last,
+                     Fuel - 1)
+               then
+                  Lemma_Path_Decompose
+                    (Self,
+                     Base,
+                     Self.Code (Entry_State).Next_1,
+                     Middle,
+                     Stop,
+                     Text,
+                     First,
+                     Last,
+                     Fuel - 1,
+                     Cut,
+                     Left_Fuel);
+               else
+                  Lemma_Path_Decompose
+                    (Self,
+                     Base,
+                     Self.Code (Entry_State).Next_2,
+                     Middle,
+                     Stop,
+                     Text,
+                     First,
+                     Last,
+                     Fuel - 1,
+                     Cut,
+                     Left_Fuel);
+               end if;
+
+            when At_Start | At_End   =>
+               Lemma_Path_Decompose
+                 (Self,
+                  Base,
+                  Self.Code (Entry_State).Next_1,
+                  Middle,
+                  Stop,
+                  Text,
+                  First,
+                  Last,
+                  Fuel - 1,
+                  Cut,
+                  Left_Fuel);
+
+            when Dead | Accept_State =>
+               Cut := First;
+               Left_Fuel := 0;
+         end case;
+         Left_Fuel := Left_Fuel + 1;
+      end if;
+   end Lemma_Path_Decompose;
+
+   function Leaf_Compiled
+     (N : Node; Self : Program; Base, Next, Entry_State : State_Id)
+      return Boolean
+   is (Next <= Base
+       and then
+         (case N.Kind is
+            when Empty_Node                         => Entry_State = Next,
+            when Bytes_Node | Start_Node | End_Node =>
+              Entry_State > Base
+              and then Entry_State <= Self.Count
+              and then Self.Code (Entry_State).Next_1 = Next
+              and then
+                (case N.Kind is
+                   when Bytes_Node =>
+                     Self.Code (Entry_State).Op = Consume
+                     and Self.Code (Entry_State).Bytes = N.Bytes,
+                   when Start_Node => Self.Code (Entry_State).Op = At_Start,
+                   when End_Node   => Self.Code (Entry_State).Op = At_End,
+                   when others     => False),
+            when others                             => False))
+   with Ghost => Static;
+
+   procedure Lemma_Leaf_Path
+     (Nodes                   : Tree;
+      Id                      : Live_Node;
+      Self                    : Program;
+      Base, Next, Entry_State : State_Id;
+      Text                    : String;
+      First, Last             : Natural;
+      Fuel                    : Path_Steps)
+   with
+     Ghost => Static,
+     Pre   =>
+       Tree_Valid (Nodes)
+       and First <= Last
+       and Last <= Text'Length
+       and Fuel > 0
+       and Leaf_Compiled (Nodes (Id), Self, Base, Next, Entry_State),
+     Post  =>
+       Matches (Nodes, Id, Text, First, Last)
+       = Fragment_Path (Self.Code, Entry_State, Next, Text, First, Last, Fuel)
+   is
+   begin
+      null;
+   end Lemma_Leaf_Path;
+
+   --  Structural compilation certificates inspect only their own code
+   --  interval. Existential boundaries retain the witnesses needed to compose
+   --  child languages without defining semantics by calling the compiler.
+   function Compiled_Shape
+     (Nodes : Tree; Id : Live_Node; Code : Code_Array;
+      Base, Limit, Next, Entry_State : State_Id) return Boolean
+   with Ghost => Static, Pre => Tree_Valid (Nodes),
+     Subprogram_Variant =>
+       (Decreases => Id, Decreases => Natural'(0), Decreases => Natural'(0));
+
+   function Copies_Shape
+     (Nodes : Tree; Id : Live_Node; Code : Code_Array;
+      Base, Limit, Next, Entry_State : State_Id; Count : Natural) return Boolean
+   with Ghost => Static, Pre => Tree_Valid (Nodes),
+     Subprogram_Variant =>
+       (Decreases => Id, Decreases => Natural'(1), Decreases => Count);
+
+   function Optional_Shape
+     (Nodes : Tree; Id : Live_Node; Code : Code_Array;
+      Base, Limit, Next, Entry_State : State_Id; Count : Natural) return Boolean
+   with Ghost => Static, Pre => Tree_Valid (Nodes),
+     Subprogram_Variant =>
+       (Decreases => Id, Decreases => Natural'(1), Decreases => Count);
+
+   function Tail_Shape
+     (Nodes : Tree; Id : Live_Node; Code : Code_Array;
+      Base, Limit, Next, Entry_State : State_Id; Count : Natural; Unlimited : Boolean) return Boolean
+   with Ghost => Static, Pre => Tree_Valid (Nodes),
+     Subprogram_Variant =>
+       (Decreases => Id, Decreases => Natural'(2), Decreases => Count);
+
+   function Compiled_Shape
+     (Nodes : Tree; Id : Live_Node; Code : Code_Array;
+      Base, Limit, Next, Entry_State : State_Id) return Boolean
+   is (Base <= Limit and then Next <= Base and then Entry_State <= Limit
+       and then
+         (case Nodes (Id).Kind is
+            when Empty_Node => Base = Limit and Entry_State = Next,
+            when Bytes_Node | Start_Node | End_Node =>
+              Base < Limit and then Limit = Base + 1 and then Entry_State = Limit
+              and then Code (Limit).Next_1 = Next
+              and then
+                (case Nodes (Id).Kind is
+                   when Bytes_Node => Code (Limit).Op = Consume
+                     and Code (Limit).Bytes = Nodes (Id).Bytes,
+                   when Start_Node => Code (Limit).Op = At_Start,
+                   when End_Node => Code (Limit).Op = At_End,
+                   when others => False),
+            when Concat_Node =>
+              (for some Cut in Base .. Limit =>
+                 (for some Middle in 0 .. Cut =>
+                    Compiled_Shape
+                      (Nodes, Nodes (Id).Right, Code, Base, Cut, Next, Middle)
+                    and then Compiled_Shape
+                      (Nodes, Nodes (Id).Left, Code, Cut, Limit, Middle, Entry_State))),
+            when Alt_Node =>
+              Base < Limit and then Entry_State = Limit
+              and then Code (Limit).Op = Split
+              and then (for some Cut in Base .. Limit - 1 =>
+                Compiled_Shape
+                  (Nodes, Nodes (Id).Left, Code, Base, Cut, Next, Code (Limit).Next_1)
+                and then Compiled_Shape
+                  (Nodes, Nodes (Id).Right, Code, Cut, Limit - 1, Next, Code (Limit).Next_2)),
+            when Repeat_Node =>
+              (for some Cut in Base .. Limit =>
+                 (for some Middle in 0 .. Cut =>
+                    Tail_Shape
+                      (Nodes, Nodes (Id).Left, Code, Base, Cut, Next, Middle,
+                       (if Nodes (Id).Unlimited then 0 else Nodes (Id).High - Nodes (Id).Low),
+                       Nodes (Id).Unlimited)
+                    and then Copies_Shape
+                      (Nodes, Nodes (Id).Left, Code, Cut, Limit, Middle, Entry_State,
+                       Nodes (Id).Low)))));
+
+   function Copies_Shape
+     (Nodes : Tree; Id : Live_Node; Code : Code_Array;
+      Base, Limit, Next, Entry_State : State_Id; Count : Natural) return Boolean
+   is (Base <= Limit and then Next <= Base and then Entry_State <= Limit
+       and then (if Count = 0 then Base = Limit and Entry_State = Next
+       else (for some Cut in Base .. Limit =>
+         (for some Middle in 0 .. Cut =>
+            Copies_Shape (Nodes, Id, Code, Base, Cut, Next, Middle, Count - 1)
+            and then Compiled_Shape (Nodes, Id, Code, Cut, Limit, Middle, Entry_State)))));
+
+   function Optional_Shape
+     (Nodes : Tree; Id : Live_Node; Code : Code_Array;
+      Base, Limit, Next, Entry_State : State_Id; Count : Natural) return Boolean
+   is (Base <= Limit and then Next <= Base and then Entry_State <= Limit
+       and then (if Count = 0 then Base = Limit and Entry_State = Next
+       else Base < Limit and then Entry_State = Limit and then Code (Limit).Op = Split
+         and then (for some Cut in Base .. Limit - 1 =>
+            Optional_Shape
+              (Nodes, Id, Code, Base, Cut, Next, Code (Limit).Next_2, Count - 1)
+            and then Compiled_Shape
+              (Nodes, Id, Code, Cut, Limit - 1, Code (Limit).Next_2, Code (Limit).Next_1))));
+
+   function Tail_Shape
+     (Nodes : Tree; Id : Live_Node; Code : Code_Array;
+      Base, Limit, Next, Entry_State : State_Id; Count : Natural; Unlimited : Boolean)
+      return Boolean
+   is (Base <= Limit and then Next <= Base and then Entry_State <= Limit
+       and then (if Unlimited then
+         Base < Limit and then Entry_State = Base + 1
+         and then Code (Entry_State).Op = Split and then Code (Entry_State).Next_2 = Next
+         and then Compiled_Shape
+           (Nodes, Id, Code, Entry_State, Limit, Entry_State, Code (Entry_State).Next_1)
+       else Optional_Shape (Nodes, Id, Code, Base, Limit, Next, Entry_State, Count)));
+
+   procedure Reveal_Shape
+     (Nodes : Tree; Id : Live_Node; Code : Code_Array;
+      Base, Limit, Next, Entry_State : State_Id)
+   with Ghost => Static,
+     Pre => Tree_Valid (Nodes) and then Compiled_Shape
+       (Nodes, Id, Code, Base, Limit, Next, Entry_State),
+     Post => (Base <= Limit and then Next <= Base and then Entry_State <= Limit
+       and then
+         (case Nodes (Id).Kind is
+            when Empty_Node => Base = Limit and Entry_State = Next,
+            when Bytes_Node | Start_Node | End_Node =>
+              Base < Limit and then Limit = Base + 1 and then Entry_State = Limit
+              and then Code (Limit).Next_1 = Next
+              and then
+                (case Nodes (Id).Kind is
+                   when Bytes_Node => Code (Limit).Op = Consume
+                     and Code (Limit).Bytes = Nodes (Id).Bytes,
+                   when Start_Node => Code (Limit).Op = At_Start,
+                   when End_Node => Code (Limit).Op = At_End,
+                   when others => False),
+            when Concat_Node =>
+              (for some Cut in Base .. Limit =>
+                 (for some Middle in 0 .. Cut =>
+                    Compiled_Shape
+                      (Nodes, Nodes (Id).Right, Code, Base, Cut, Next, Middle)
+                    and then Compiled_Shape
+                      (Nodes, Nodes (Id).Left, Code, Cut, Limit, Middle, Entry_State))),
+            when Alt_Node =>
+              Base < Limit and then Entry_State = Limit
+              and then Code (Limit).Op = Split
+              and then (for some Cut in Base .. Limit - 1 =>
+                Compiled_Shape
+                  (Nodes, Nodes (Id).Left, Code, Base, Cut, Next, Code (Limit).Next_1)
+                and then Compiled_Shape
+                  (Nodes, Nodes (Id).Right, Code, Cut, Limit - 1, Next, Code (Limit).Next_2)),
+            when Repeat_Node =>
+              (for some Cut in Base .. Limit =>
+                 (for some Middle in 0 .. Cut =>
+                    Tail_Shape
+                      (Nodes, Nodes (Id).Left, Code, Base, Cut, Next, Middle,
+                       (if Nodes (Id).Unlimited then 0 else Nodes (Id).High - Nodes (Id).Low),
+                       Nodes (Id).Unlimited)
+                    and then Copies_Shape
+                      (Nodes, Nodes (Id).Left, Code, Cut, Limit, Middle, Entry_State,
+                       Nodes (Id).Low)))))
+   is
+   begin
+      null;
+   end Reveal_Shape;
+
+   procedure Reveal_Copies
+     (Nodes : Tree; Id : Live_Node; Code : Code_Array;
+      Base, Limit, Next, Entry_State : State_Id; Count : Natural)
+   with Ghost => Static,
+     Pre => Tree_Valid (Nodes) and then Copies_Shape
+       (Nodes, Id, Code, Base, Limit, Next, Entry_State, Count),
+     Post => (Base <= Limit and then Next <= Base and then Entry_State <= Limit
+       and then (if Count = 0 then Base = Limit and Entry_State = Next
+       else (for some Cut in Base .. Limit =>
+         (for some Middle in 0 .. Cut =>
+            Copies_Shape (Nodes, Id, Code, Base, Cut, Next, Middle, Count - 1)
+            and then Compiled_Shape (Nodes, Id, Code, Cut, Limit, Middle, Entry_State)))))
+   is
+   begin
+      null;
+   end Reveal_Copies;
+
+   procedure Lemma_Shape_Frame
+     (Nodes : Tree; Id : Live_Node; Before, After : Code_Array;
+      Base, Limit, Next, Entry_State : State_Id)
+   with Ghost => Static,
+     Pre => Tree_Valid (Nodes) and then Base <= Limit
+       and then (for all K in 1 .. Limit => (if K > Base then Before (K) = After (K))),
+     Post => Compiled_Shape (Nodes, Id, Before, Base, Limit, Next, Entry_State) = Compiled_Shape (Nodes, Id, After, Base, Limit, Next, Entry_State),
+     Subprogram_Variant =>
+       (Decreases => Id, Decreases => Natural'(0), Decreases => Natural'(0),
+        Decreases => Natural'(1));
+
+   procedure Lemma_Copies_Frame
+     (Nodes : Tree; Id : Live_Node; Before, After : Code_Array;
+      Base, Limit, Next, Entry_State : State_Id; Count : Natural)
+   with Ghost => Static,
+     Pre => Tree_Valid (Nodes) and then Base <= Limit
+       and then (for all K in 1 .. Limit => (if K > Base then Before (K) = After (K))),
+     Post => Copies_Shape (Nodes, Id, Before, Base, Limit, Next, Entry_State, Count) = Copies_Shape (Nodes, Id, After, Base, Limit, Next, Entry_State, Count),
+     Subprogram_Variant =>
+       (Decreases => Id, Decreases => Natural'(1), Decreases => Count,
+        Decreases => Natural'(1));
+
+   procedure Lemma_Optional_Frame
+     (Nodes : Tree; Id : Live_Node; Before, After : Code_Array;
+      Base, Limit, Next, Entry_State : State_Id; Count : Natural)
+   with Ghost => Static,
+     Pre => Tree_Valid (Nodes) and then Base <= Limit
+       and then (for all K in 1 .. Limit => (if K > Base then Before (K) = After (K))),
+     Post => Optional_Shape (Nodes, Id, Before, Base, Limit, Next, Entry_State, Count) = Optional_Shape (Nodes, Id, After, Base, Limit, Next, Entry_State, Count),
+     Subprogram_Variant =>
+       (Decreases => Id, Decreases => Natural'(1), Decreases => Count,
+        Decreases => Natural'(1));
+
+   procedure Lemma_Tail_Frame
+     (Nodes : Tree; Id : Live_Node; Before, After : Code_Array;
+      Base, Limit, Next, Entry_State : State_Id; Count : Natural; Unlimited : Boolean)
+   with Ghost => Static,
+     Pre => Tree_Valid (Nodes) and then Base <= Limit
+       and then (for all K in 1 .. Limit => (if K > Base then Before (K) = After (K))),
+     Post => Tail_Shape (Nodes, Id, Before, Base, Limit, Next, Entry_State, Count, Unlimited) = Tail_Shape (Nodes, Id, After, Base, Limit, Next, Entry_State, Count, Unlimited),
+     Subprogram_Variant =>
+       (Decreases => Id, Decreases => Natural'(2), Decreases => Count,
+        Decreases => Natural'(1));
+
+   procedure Lemma_Shape_Preserve
+     (Nodes : Tree; Id : Live_Node; Before, After : Code_Array;
+      Base, Limit, Next, Entry_State : State_Id)
+   with Ghost => Static,
+     Pre => Tree_Valid (Nodes) and then Base <= Limit
+       and then (for all K in 1 .. Limit => (if K > Base then Before (K) = After (K)))
+       and then Compiled_Shape (Nodes, Id, Before, Base, Limit, Next, Entry_State),
+     Post => Compiled_Shape (Nodes, Id, After, Base, Limit, Next, Entry_State),
+     Subprogram_Variant =>
+       (Decreases => Id, Decreases => Natural'(0), Decreases => Natural'(0),
+        Decreases => Natural'(0));
+
+   procedure Lemma_Copies_Preserve
+     (Nodes : Tree; Id : Live_Node; Before, After : Code_Array;
+      Base, Limit, Next, Entry_State : State_Id; Count : Natural)
+   with Ghost => Static,
+     Pre => Tree_Valid (Nodes) and then Base <= Limit
+       and then (for all K in 1 .. Limit => (if K > Base then Before (K) = After (K)))
+       and then Copies_Shape (Nodes, Id, Before, Base, Limit, Next, Entry_State, Count),
+     Post => Copies_Shape (Nodes, Id, After, Base, Limit, Next, Entry_State, Count),
+     Subprogram_Variant =>
+       (Decreases => Id, Decreases => Natural'(1), Decreases => Count,
+        Decreases => Natural'(0));
+
+   procedure Lemma_Optional_Preserve
+     (Nodes : Tree; Id : Live_Node; Before, After : Code_Array;
+      Base, Limit, Next, Entry_State : State_Id; Count : Natural)
+   with Ghost => Static,
+     Pre => Tree_Valid (Nodes) and then Base <= Limit
+       and then (for all K in 1 .. Limit => (if K > Base then Before (K) = After (K)))
+       and then Optional_Shape (Nodes, Id, Before, Base, Limit, Next, Entry_State, Count),
+     Post => Optional_Shape (Nodes, Id, After, Base, Limit, Next, Entry_State, Count),
+     Subprogram_Variant =>
+       (Decreases => Id, Decreases => Natural'(1), Decreases => Count,
+        Decreases => Natural'(0));
+
+   procedure Lemma_Tail_Preserve
+     (Nodes : Tree; Id : Live_Node; Before, After : Code_Array;
+      Base, Limit, Next, Entry_State : State_Id; Count : Natural; Unlimited : Boolean)
+   with Ghost => Static,
+     Pre => Tree_Valid (Nodes) and then Base <= Limit
+       and then (for all K in 1 .. Limit => (if K > Base then Before (K) = After (K)))
+       and then Tail_Shape (Nodes, Id, Before, Base, Limit, Next, Entry_State, Count, Unlimited),
+     Post => Tail_Shape (Nodes, Id, After, Base, Limit, Next, Entry_State, Count, Unlimited),
+     Subprogram_Variant =>
+       (Decreases => Id, Decreases => Natural'(2), Decreases => Count,
+        Decreases => Natural'(0));
+
+   procedure Lemma_Copies_Join
+     (Nodes : Tree; Id : Live_Node; Code : Code_Array;
+      Base, Cut, Limit, Next, Middle, Entry_State : State_Id; Count : Positive)
+   with Ghost => Static,
+     Pre => Tree_Valid (Nodes) and then Base <= Cut and then Cut <= Limit
+       and then Next <= Base and then Middle <= Cut and then Entry_State <= Limit
+       and then Copies_Shape (Nodes, Id, Code, Base, Cut, Next, Middle, Count - 1)
+       and then Compiled_Shape (Nodes, Id, Code, Cut, Limit, Middle, Entry_State),
+     Post => Copies_Shape (Nodes, Id, Code, Base, Limit, Next, Entry_State, Count)
+   is
+   begin
+      pragma Assert (for some M in 0 .. Cut =>
+        Copies_Shape (Nodes, Id, Code, Base, Cut, Next, M, Count - 1)
+        and then Compiled_Shape (Nodes, Id, Code, Cut, Limit, M, Entry_State));
+      pragma Assert_And_Cut
+        (Tree_Valid (Nodes) and then Base <= Limit and then Next <= Base
+         and then Entry_State <= Limit and then Count > 0
+         and then (for some C in Base .. Limit =>
+           (for some M in 0 .. C =>
+              Copies_Shape (Nodes, Id, Code, Base, C, Next, M, Count - 1)
+              and then Compiled_Shape (Nodes, Id, Code, C, Limit, M, Entry_State))));
+   end Lemma_Copies_Join;
+
+   procedure Lemma_Concat_Join
+     (Nodes : Tree; Id : Live_Node; Code : Code_Array;
+      Base, Cut, Limit, Next, Middle, Entry_State : State_Id)
+   with Ghost => Static,
+     Pre => Tree_Valid (Nodes) and then Nodes (Id).Kind = Concat_Node
+       and then Base <= Cut and then Cut <= Limit
+       and then Next <= Base and then Middle <= Cut and then Entry_State <= Limit
+       and then Compiled_Shape
+         (Nodes, Nodes (Id).Right, Code, Base, Cut, Next, Middle)
+       and then Compiled_Shape
+         (Nodes, Nodes (Id).Left, Code, Cut, Limit, Middle, Entry_State),
+     Post => Compiled_Shape (Nodes, Id, Code, Base, Limit, Next, Entry_State)
+   is
+   begin
+      pragma Assert (for some M in 0 .. Cut =>
+        Compiled_Shape (Nodes, Nodes (Id).Right, Code, Base, Cut, Next, M)
+        and then Compiled_Shape (Nodes, Nodes (Id).Left, Code, Cut, Limit, M, Entry_State));
+   end Lemma_Concat_Join;
+
+   procedure Lemma_Repeat_Join
+     (Nodes : Tree; Id : Live_Node; Code : Code_Array;
+      Base, Cut, Limit, Next, Middle, Entry_State : State_Id)
+   with Ghost => Static,
+     Pre => Tree_Valid (Nodes) and then Nodes (Id).Kind = Repeat_Node
+       and then Base <= Cut and then Cut <= Limit
+       and then Next <= Base and then Middle <= Cut and then Entry_State <= Limit
+       and then Tail_Shape
+         (Nodes, Nodes (Id).Left, Code, Base, Cut, Next, Middle,
+          (if Nodes (Id).Unlimited then 0 else Nodes (Id).High - Nodes (Id).Low), Nodes (Id).Unlimited)
+       and then Copies_Shape
+         (Nodes, Nodes (Id).Left, Code, Cut, Limit, Middle, Entry_State, Nodes (Id).Low),
+     Post => Compiled_Shape (Nodes, Id, Code, Base, Limit, Next, Entry_State)
+   is
+   begin
+      pragma Assert (for some M in 0 .. Cut =>
+        Tail_Shape
+          (Nodes, Nodes (Id).Left, Code, Base, Cut, Next, M,
+           (if Nodes (Id).Unlimited then 0 else Nodes (Id).High - Nodes (Id).Low), Nodes (Id).Unlimited)
+        and then Copies_Shape
+          (Nodes, Nodes (Id).Left, Code, Cut, Limit, M, Entry_State, Nodes (Id).Low));
+   end Lemma_Repeat_Join;
+
+   procedure Lemma_Shape_Preserve
+     (Nodes : Tree; Id : Live_Node; Before, After : Code_Array;
+      Base, Limit, Next, Entry_State : State_Id)
+   is
+   begin
+      Reveal_Shape (Nodes, Id, Before, Base, Limit, Next, Entry_State);
+      case Nodes (Id).Kind is
+         when Empty_Node | Bytes_Node | Start_Node | End_Node => null;
+         when Concat_Node =>
+         for Cut in Base .. Limit loop
+            if (for some M in 0 .. Cut => Compiled_Shape (Nodes, Nodes (Id).Right, Before, Base, Cut, Next, M) and then Compiled_Shape (Nodes, Nodes (Id).Left, Before, Cut, Limit, M, Entry_State)) then
+            for Middle in 0 .. Cut loop
+               if Compiled_Shape (Nodes, Nodes (Id).Right, Before, Base, Cut, Next, Middle) and then Compiled_Shape (Nodes, Nodes (Id).Left, Before, Cut, Limit, Middle, Entry_State) then
+                  Lemma_Shape_Frame (Nodes, Nodes (Id).Right, Before, After, Base, Cut, Next, Middle);
+                  Lemma_Shape_Frame (Nodes, Nodes (Id).Left, Before, After, Cut, Limit, Middle, Entry_State);
+                  Lemma_Concat_Join (Nodes, Id, After, Base, Cut, Limit, Next, Middle, Entry_State);
+                  return;
+               end if;
+               pragma Loop_Invariant (for all M in 0 .. Middle => not (Compiled_Shape (Nodes, Nodes (Id).Right, Before, Base, Cut, Next, M) and then Compiled_Shape (Nodes, Nodes (Id).Left, Before, Cut, Limit, M, Entry_State)));
+            end loop;
+            pragma Assert (False);
+            end if;
+            pragma Loop_Invariant (for some C in Base .. Limit => (for some M in 0 .. C => Compiled_Shape (Nodes, Nodes (Id).Right, Before, Base, C, Next, M) and then Compiled_Shape (Nodes, Nodes (Id).Left, Before, C, Limit, M, Entry_State)));
+            --  Keep the negated witness in the same form as the guard.
+            --  Each visited cut has no middle state joining the children.
+            pragma Loop_Invariant
+              (for all C in Base .. Cut =>
+                 not (for some M in 0 .. C =>
+                   Compiled_Shape
+                     (Nodes, Nodes (Id).Right, Before, Base, C, Next, M)
+                   and then Compiled_Shape
+                     (Nodes, Nodes (Id).Left, Before, C, Limit, M, Entry_State)));
+         end loop;
+         pragma Assert (False);
+
+         when Alt_Node =>
+            for Cut in Base .. Limit - 1 loop
+               if Compiled_Shape
+                 (Nodes, Nodes (Id).Left, Before, Base, Cut, Next, Before (Limit).Next_1)
+                 and then Compiled_Shape
+                 (Nodes, Nodes (Id).Right, Before, Cut, Limit - 1, Next, Before (Limit).Next_2)
+               then
+                  Lemma_Shape_Frame
+                    (Nodes, Nodes (Id).Left, Before, After, Base, Cut, Next, Before (Limit).Next_1);
+                  Lemma_Shape_Frame
+                    (Nodes, Nodes (Id).Right, Before, After, Cut, Limit - 1, Next, Before (Limit).Next_2);
+                  return;
+               end if;
+               pragma Loop_Invariant (for all C in Base .. Cut => not
+                 (Compiled_Shape
+                    (Nodes, Nodes (Id).Left, Before, Base, C, Next, Before (Limit).Next_1)
+                  and then Compiled_Shape
+                    (Nodes, Nodes (Id).Right, Before, C, Limit - 1, Next, Before (Limit).Next_2)));
+            end loop;
+            pragma Assert (False);
+         when Repeat_Node =>
+         for Cut in Base .. Limit loop
+            if (for some M in 0 .. Cut => Tail_Shape (Nodes, Nodes (Id).Left, Before, Base, Cut, Next, M, (if Nodes (Id).Unlimited then 0 else Nodes (Id).High - Nodes (Id).Low), Nodes (Id).Unlimited) and then Copies_Shape (Nodes, Nodes (Id).Left, Before, Cut, Limit, M, Entry_State, Nodes (Id).Low)) then
+            for Middle in 0 .. Cut loop
+               if Tail_Shape (Nodes, Nodes (Id).Left, Before, Base, Cut, Next, Middle, (if Nodes (Id).Unlimited then 0 else Nodes (Id).High - Nodes (Id).Low), Nodes (Id).Unlimited) and then Copies_Shape (Nodes, Nodes (Id).Left, Before, Cut, Limit, Middle, Entry_State, Nodes (Id).Low) then
+                  Lemma_Tail_Frame (Nodes, Nodes (Id).Left, Before, After, Base, Cut, Next, Middle, (if Nodes (Id).Unlimited then 0 else Nodes (Id).High - Nodes (Id).Low), Nodes (Id).Unlimited);
+                  Lemma_Copies_Frame (Nodes, Nodes (Id).Left, Before, After, Cut, Limit, Middle, Entry_State, Nodes (Id).Low);
+                  Lemma_Repeat_Join (Nodes, Id, After, Base, Cut, Limit, Next, Middle, Entry_State);
+                  return;
+               end if;
+               pragma Loop_Invariant (for all M in 0 .. Middle => not (Tail_Shape (Nodes, Nodes (Id).Left, Before, Base, Cut, Next, M, (if Nodes (Id).Unlimited then 0 else Nodes (Id).High - Nodes (Id).Low), Nodes (Id).Unlimited) and then Copies_Shape (Nodes, Nodes (Id).Left, Before, Cut, Limit, M, Entry_State, Nodes (Id).Low)));
+            end loop;
+            pragma Assert (False);
+            end if;
+            pragma Loop_Invariant
+              (for all C in Base .. Cut =>
+                 not (for some M in 0 .. C =>
+                   Tail_Shape
+                     (Nodes, Nodes (Id).Left, Before, Base, C, Next, M,
+                      (if Nodes (Id).Unlimited then 0
+                       else Nodes (Id).High - Nodes (Id).Low),
+                      Nodes (Id).Unlimited)
+                   and then Copies_Shape
+                     (Nodes, Nodes (Id).Left, Before, C, Limit, M,
+                      Entry_State, Nodes (Id).Low)));
+         end loop;
+         pragma Assert (False);
+
+      end case;
+   end Lemma_Shape_Preserve;
+
+   procedure Lemma_Copies_Preserve
+     (Nodes : Tree; Id : Live_Node; Before, After : Code_Array;
+      Base, Limit, Next, Entry_State : State_Id; Count : Natural)
+   is
+   begin
+      Reveal_Copies (Nodes, Id, Before, Base, Limit, Next, Entry_State, Count);
+      if Count > 0 then
+         for Cut in Base .. Limit loop
+            if (for some M in 0 .. Cut => Copies_Shape (Nodes, Id, Before, Base, Cut, Next, M, Count - 1) and then Compiled_Shape (Nodes, Id, Before, Cut, Limit, M, Entry_State)) then
+            for Middle in 0 .. Cut loop
+               if Copies_Shape (Nodes, Id, Before, Base, Cut, Next, Middle, Count - 1) and then Compiled_Shape (Nodes, Id, Before, Cut, Limit, Middle, Entry_State) then
+                  Lemma_Copies_Frame (Nodes, Id, Before, After, Base, Cut, Next, Middle, Count - 1);
+                  Lemma_Shape_Frame (Nodes, Id, Before, After, Cut, Limit, Middle, Entry_State);
+                  Lemma_Copies_Join (Nodes, Id, After, Base, Cut, Limit, Next, Middle, Entry_State, Count);
+                  return;
+               end if;
+               pragma Loop_Invariant (for all M in 0 .. Middle => not (Copies_Shape (Nodes, Id, Before, Base, Cut, Next, M, Count - 1) and then Compiled_Shape (Nodes, Id, Before, Cut, Limit, M, Entry_State)));
+            end loop;
+            pragma Assert (False);
+            end if;
+            pragma Loop_Invariant (for some C in Base .. Limit => (for some M in 0 .. C => Copies_Shape (Nodes, Id, Before, Base, C, Next, M, Count - 1) and then Compiled_Shape (Nodes, Id, Before, C, Limit, M, Entry_State)));
+            pragma Loop_Invariant
+              (for all C in Base .. Cut =>
+                 not (for some M in 0 .. C =>
+                   Copies_Shape
+                     (Nodes, Id, Before, Base, C, Next, M, Count - 1)
+                   and then Compiled_Shape
+                     (Nodes, Id, Before, C, Limit, M, Entry_State)));
+         end loop;
+         pragma Assert (False);
+
+      end if;
+   end Lemma_Copies_Preserve;
+
+   procedure Lemma_Optional_Preserve
+     (Nodes : Tree; Id : Live_Node; Before, After : Code_Array;
+      Base, Limit, Next, Entry_State : State_Id; Count : Natural)
+   is
+   begin
+      if Count > 0 then
+         for Cut in Base .. Limit - 1 loop
+            if Optional_Shape
+              (Nodes, Id, Before, Base, Cut, Next, Before (Limit).Next_2, Count - 1)
+              and then Compiled_Shape
+              (Nodes, Id, Before, Cut, Limit - 1, Before (Limit).Next_2, Before (Limit).Next_1)
+            then
+               Lemma_Optional_Frame
+                 (Nodes, Id, Before, After, Base, Cut, Next, Before (Limit).Next_2, Count - 1);
+               Lemma_Shape_Frame
+                 (Nodes, Id, Before, After, Cut, Limit - 1, Before (Limit).Next_2, Before (Limit).Next_1);
+               return;
+            end if;
+            pragma Loop_Invariant (for all C in Base .. Cut => not
+              (Optional_Shape
+                 (Nodes, Id, Before, Base, C, Next, Before (Limit).Next_2, Count - 1)
+               and then Compiled_Shape
+                 (Nodes, Id, Before, C, Limit - 1, Before (Limit).Next_2, Before (Limit).Next_1)));
+         end loop;
+         pragma Assert (False);
+      end if;
+   end Lemma_Optional_Preserve;
+
+   procedure Lemma_Tail_Preserve
+     (Nodes : Tree; Id : Live_Node; Before, After : Code_Array;
+      Base, Limit, Next, Entry_State : State_Id; Count : Natural; Unlimited : Boolean)
+   is
+   begin
+      if Unlimited then
+         Lemma_Shape_Frame
+           (Nodes, Id, Before, After, Entry_State, Limit, Entry_State, Before (Entry_State).Next_1);
+      else
+         Lemma_Optional_Frame
+           (Nodes, Id, Before, After, Base, Limit, Next, Entry_State, Count);
+      end if;
+   end Lemma_Tail_Preserve;
+
+   procedure Lemma_Shape_Frame
+     (Nodes : Tree; Id : Live_Node; Before, After : Code_Array;
+      Base, Limit, Next, Entry_State : State_Id)
+   is
+   begin
+      if Compiled_Shape (Nodes, Id, Before, Base, Limit, Next, Entry_State) then
+         Lemma_Shape_Preserve (Nodes, Id, Before, After, Base, Limit, Next, Entry_State);
+      elsif Compiled_Shape (Nodes, Id, After, Base, Limit, Next, Entry_State) then
+         Lemma_Shape_Preserve (Nodes, Id, After, Before, Base, Limit, Next, Entry_State);
+      end if;
+   end Lemma_Shape_Frame;
+
+   procedure Lemma_Copies_Frame
+     (Nodes : Tree; Id : Live_Node; Before, After : Code_Array;
+      Base, Limit, Next, Entry_State : State_Id; Count : Natural)
+   is
+   begin
+      if Copies_Shape (Nodes, Id, Before, Base, Limit, Next, Entry_State, Count) then
+         Lemma_Copies_Preserve (Nodes, Id, Before, After, Base, Limit, Next, Entry_State, Count);
+      elsif Copies_Shape (Nodes, Id, After, Base, Limit, Next, Entry_State, Count) then
+         Lemma_Copies_Preserve (Nodes, Id, After, Before, Base, Limit, Next, Entry_State, Count);
+      end if;
+   end Lemma_Copies_Frame;
+
+   procedure Lemma_Optional_Frame
+     (Nodes : Tree; Id : Live_Node; Before, After : Code_Array;
+      Base, Limit, Next, Entry_State : State_Id; Count : Natural)
+   is
+   begin
+      if Optional_Shape (Nodes, Id, Before, Base, Limit, Next, Entry_State, Count) then
+         Lemma_Optional_Preserve (Nodes, Id, Before, After, Base, Limit, Next, Entry_State, Count);
+      elsif Optional_Shape (Nodes, Id, After, Base, Limit, Next, Entry_State, Count) then
+         Lemma_Optional_Preserve (Nodes, Id, After, Before, Base, Limit, Next, Entry_State, Count);
+      end if;
+   end Lemma_Optional_Frame;
+
+   procedure Lemma_Tail_Frame
+     (Nodes : Tree; Id : Live_Node; Before, After : Code_Array;
+      Base, Limit, Next, Entry_State : State_Id; Count : Natural; Unlimited : Boolean)
+   is
+   begin
+      if Tail_Shape (Nodes, Id, Before, Base, Limit, Next, Entry_State, Count, Unlimited) then
+         Lemma_Tail_Preserve (Nodes, Id, Before, After, Base, Limit, Next, Entry_State, Count, Unlimited);
+      elsif Tail_Shape (Nodes, Id, After, Base, Limit, Next, Entry_State, Count, Unlimited) then
+         Lemma_Tail_Preserve (Nodes, Id, After, Before, Base, Limit, Next, Entry_State, Count, Unlimited);
+      end if;
+   end Lemma_Tail_Frame;
+
+   procedure Compile_Tree
+     (Nodes  : Tree;
+      Root   : Live_Node;
+      Result : out Program;
+      Status : out Compile_Status)
+   with
+     Post =>
+       Is_Valid (Result) = (Status = Success)
+       and Well_Formed (Result)
+       and Status in Success | State_Limit | Expansion_Limit
+   is
+      pragma Precondition (Static => Tree_Valid (Nodes));
+      pragma Postcondition
+        (Static => (if Status = Success then Result.Count >= 1
+          and then Result.Code (1).Op = Accept_State
+          and then Compiled_Shape
+            (Nodes, Root, Result.Code, 1, Result.Count, 1, Result.Start)));
+      Expansions : Natural range 0 .. 65_536 := 0;
+      procedure Emit
+        (Op    : Opcode;
+         A, B  : State_Id;
+         Id    : out State_Id;
+         Bytes : Byte_Set := [others => False])
+      with
+        Pre  =>
+          not Result.Valid
+          and Links_Valid (Result)
+          and A <= Result.Count
+          and B <= Result.Count,
+        Post =>
+          not Result.Valid
+          and (if Status'Old /= Success then Status = Status'Old)
+          and
+            (if Status'Old = Success
+             then Status in Success | State_Limit | Expansion_Limit)
+          and Links_Valid (Result)
+          and Result.Count >= Result.Count'Old
+          and Id <= Result.Count
+          and (if Status = Success then Id > 0)
+      is
+         pragma
+           Postcondition
+             (Static =>
+                (for all K in 1 .. Result.Count'Old =>
+                   Result.Code (K) = Result.Code'Old (K))
+                and (if Id /= 0 then Id > Result.Count'Old)
+                and
+                  (if Status = Success
+                   then
+                     Id = Result.Count
+                     and Result.Count = Result.Count'Old + 1
+                     and Result.Code (Id) = Instruction'(Op, Bytes, A, B)));
+      begin
+         Id := 0;
+         if Status /= Success then
+            return;
+         end if;
+         if Result.Count = Max_States then
+            Status := State_Limit;
+            return;
+         end if;
+         Result.Count := Result.Count + 1;
+         Result.Code (Result.Count) := (Op, Bytes, A, B);
+         Id := Result.Count;
+      end Emit;
+
+      procedure Build
+        (Id : Live_Node; Next : State_Id; Entry_State : out State_Id)
+      with
+        Subprogram_Variant => (Decreases => Id),
+        Pre                =>
+          not Result.Valid and Links_Valid (Result) and Next <= Result.Count,
+        Post               =>
+          not Result.Valid
+          and (if Status'Old /= Success then Status = Status'Old)
+          and
+            (if Status'Old = Success
+             then Status in Success | State_Limit | Expansion_Limit)
+          and Links_Valid (Result)
+          and Result.Count >= Result.Count'Old
+          and Entry_State <= Result.Count
+          and (if Status = Success and Next > 0 then Entry_State > 0)
+      is
+         pragma Precondition (Static => Tree_Valid (Nodes));
+         pragma
+           Postcondition
+             (Static =>
+                (for all K in 1 .. Result.Count'Old =>
+                   Result.Code (K) = Result.Code'Old (K))
+                and
+                  (if Status = Success
+                   then
+                     (Entry_State = Next or Entry_State > Result.Count'Old)
+                     and Fragment_Closed (Result, Result.Count'Old, Next)
+                     and Compiled_Shape
+                       (Nodes, Id, Result.Code, Result.Count'Old, Result.Count,
+                        Next, Entry_State)
+                     and
+                       (if Nodes (Id).Kind in Empty_Node .. End_Node
+                        then
+                          Leaf_Compiled
+                            (Nodes (Id),
+                             Result,
+                             Result.Count'Old,
+                             Next,
+                             Entry_State))));
+         Base    : constant State_Id := Result.Count
+         with Ghost => Static;
+         A, B, S : State_Id;
+         N       : Node;
+      begin
+         Entry_State := 0;
+         if Status /= Success then
+            return;
+         end if;
+         if Expansions = 65_536 then
+            Status := Expansion_Limit;
+            return;
+         end if;
+         Expansions := Expansions + 1;
+         N := Nodes (Id);
+         case N.Kind is
+            when Empty_Node  =>
+               Entry_State := Next;
+
+            when Bytes_Node  =>
+               Emit (Consume, Next, 0, Entry_State, N.Bytes);
+
+            when Start_Node  =>
+               Emit (At_Start, Next, 0, Entry_State);
+
+            when End_Node    =>
+               Emit (At_End, Next, 0, Entry_State);
+
+            when Concat_Node =>
+               Build (N.Right, Next, A);
+               declare
+                  Cut : constant State_Id := Result.Count with Ghost => Static;
+                  Right_Code : constant Code_Array := Result.Code with Ghost => Static;
+               begin
+                  Build (N.Left, A, Entry_State);
+                  if Status = Success then
+                     Lemma_Shape_Frame
+                       (Nodes, N.Right, Right_Code, Result.Code, Base, Cut, Next, A);
+                     Lemma_Concat_Join
+                       (Nodes, Id, Result.Code, Base, Cut, Result.Count, Next, A, Entry_State);
+                  end if;
+               end;
+
+            when Alt_Node    =>
+               Build (N.Left, Next, A);
+               declare
+                  Cut : constant State_Id := Result.Count with Ghost => Static;
+                  Left_Code : constant Code_Array := Result.Code with Ghost => Static;
+               begin
+                  Build (N.Right, Next, B);
+                  declare
+                     Right_Last : constant State_Id := Result.Count with Ghost => Static;
+                     Right_Code : constant Code_Array := Result.Code with Ghost => Static;
+                  begin
+                     Emit (Split, A, B, Entry_State);
+                     if Status = Success then
+                        Lemma_Shape_Frame
+                          (Nodes, N.Left, Left_Code, Result.Code, Base, Cut, Next, A);
+                        Lemma_Shape_Frame
+                          (Nodes, N.Right, Right_Code, Result.Code, Cut, Right_Last, Next, B);
+                     end if;
+                  end;
+               end;
+
+            when Repeat_Node =>
+               A := Next;
+               if N.Unlimited then
+                  Emit (Split, 0, Next, S);
+                  Build (N.Left, S, B);
+                  declare
+                     Body_Code : constant Code_Array := Result.Code with Ghost => Static;
+                  begin
+                     if S /= 0 then
+                        Result.Code (S).Next_1 := B;
+                     end if;
+                     if Status = Success then
+                        Lemma_Shape_Frame
+                          (Nodes, N.Left, Body_Code, Result.Code, S, Result.Count, S, B);
+                     end if;
+                  end;
+                  A := S;
+               else
+                  for K in 1 .. N.High - N.Low loop
+                     pragma
+                       Loop_Invariant
+                         (not Result.Valid and Links_Valid (Result));
+                     pragma
+                       Loop_Invariant
+                         (Result.Count >= Result.Count'Loop_Entry);
+                     pragma
+                       Loop_Invariant
+                         (Static =>
+                            (for all J in 1 .. Result.Count'Loop_Entry =>
+                               Result.Code (J) = Result.Code'Loop_Entry (J)));
+                     pragma
+                       Loop_Invariant
+                         (Status in Success | State_Limit | Expansion_Limit);
+                  pragma Loop_Invariant
+                    (if Status'Loop_Entry /= Success then Status = Status'Loop_Entry);
+                     pragma
+                       Loop_Invariant
+                         (Static =>
+                            (if Status = Success
+                             then
+                               (A = Next or A > Base)
+                               and Fragment_Closed (Result, Base, Next)));
+                     pragma Loop_Invariant (A <= Result.Count);
+                     pragma
+                       Loop_Invariant
+                         (if Status = Success and Next > 0 then A > 0);
+                     pragma Loop_Invariant
+                       (Static => (if Status = Success then Optional_Shape
+                         (Nodes, N.Left, Result.Code, Base, Result.Count, Next, A, K - 1)));
+                     declare
+                        Previous_Code : constant Code_Array := Result.Code with Ghost => Static;
+                        Cut : constant State_Id := Result.Count with Ghost => Static;
+                        Previous_Entry : constant State_Id := A with Ghost => Static;
+                     begin
+                        Build (N.Left, A, B);
+                        declare
+                           Body_Code : constant Code_Array := Result.Code with Ghost => Static;
+                           Body_Last : constant State_Id := Result.Count with Ghost => Static;
+                        begin
+                           Emit (Split, B, A, S);
+                           if Status = Success then
+                              Lemma_Optional_Frame
+                                (Nodes, N.Left, Previous_Code, Result.Code,
+                                 Base, Cut, Next, Previous_Entry, K - 1);
+                              Lemma_Shape_Frame
+                                (Nodes, N.Left, Body_Code, Result.Code,
+                                 Cut, Body_Last, Previous_Entry, B);
+                           end if;
+                        end;
+                     end;
+                     A := S;
+                     pragma Assert (Static => (if Status = Success then Optional_Shape
+                       (Nodes, N.Left, Result.Code, Base, Result.Count, Next, A, K)));
+                  end loop;
+               end if;
+               pragma Assert (Static => (if Status = Success then Tail_Shape
+                 (Nodes, N.Left, Result.Code, Base, Result.Count, Next, A,
+                  (if N.Unlimited then 0 else N.High - N.Low), N.Unlimited)));
+               declare
+                  Tail_Last : constant State_Id := Result.Count with Ghost => Static;
+                  Tail_Entry : constant State_Id := A with Ghost => Static;
+                  Tail_Code : constant Code_Array := Result.Code with Ghost => Static;
+               begin
+                  if Status = Success then
+                     Lemma_Tail_Frame
+                       (Nodes, N.Left, Result.Code, Tail_Code, Base, Tail_Last,
+                        Next, Tail_Entry, (if N.Unlimited then 0 else N.High - N.Low), N.Unlimited);
+                  end if;
+               for K in 1 .. N.Low loop
+                  pragma
+                    Loop_Invariant (not Result.Valid and Links_Valid (Result));
+                  pragma
+                    Loop_Invariant (Result.Count >= Result.Count'Loop_Entry);
+                  pragma
+                    Loop_Invariant
+                      (Static =>
+                         (for all J in 1 .. Result.Count'Loop_Entry =>
+                            Result.Code (J) = Result.Code'Loop_Entry (J)));
+                  pragma
+                    Loop_Invariant
+                      (Status in Success | State_Limit | Expansion_Limit);
+                  pragma Loop_Invariant
+                    (if Status'Loop_Entry /= Success then Status = Status'Loop_Entry);
+                  pragma
+                    Loop_Invariant
+                      (Static =>
+                         (if Status = Success
+                          then
+                            (A = Next or A > Base)
+                            and Fragment_Closed (Result, Base, Next)));
+                  pragma Loop_Invariant (A <= Result.Count);
+                  pragma
+                    Loop_Invariant
+                      (if Status = Success and Next > 0 then A > 0);
+                  pragma Loop_Invariant
+                    (Static => (if Status = Success then Copies_Shape
+                      (Nodes, N.Left, Result.Code, Tail_Last, Result.Count, Tail_Entry, A, K - 1)));
+                  declare
+                     Previous_Code : constant Code_Array := Result.Code with Ghost => Static;
+                     Cut : constant State_Id := Result.Count with Ghost => Static;
+                     Previous_Entry : constant State_Id := A with Ghost => Static;
+                  begin
+                     Build (N.Left, A, B);
+                     if Status = Success then
+                        Lemma_Copies_Frame
+                          (Nodes, N.Left, Previous_Code, Result.Code,
+                           Tail_Last, Cut, Tail_Entry, Previous_Entry, K - 1);
+                        Lemma_Copies_Join
+                          (Nodes, N.Left, Result.Code, Tail_Last, Cut, Result.Count,
+                           Tail_Entry, Previous_Entry, B, K);
+                     end if;
+                  end;
+                  A := B;
+                  pragma Assert (Static => (if Status = Success then Copies_Shape
+                    (Nodes, N.Left, Result.Code, Tail_Last, Result.Count, Tail_Entry, A, K)));
+               end loop;
+                  if Status = Success then
+                     Lemma_Tail_Frame
+                       (Nodes, N.Left, Tail_Code, Result.Code, Base, Tail_Last,
+                        Next, Tail_Entry, (if N.Unlimited then 0 else N.High - N.Low), N.Unlimited);
+                     Lemma_Repeat_Join
+                       (Nodes, Id, Result.Code, Base, Tail_Last, Result.Count, Next, Tail_Entry, A);
+                  end if;
+               end;
+               Entry_State := A;
+         end case;
+      end Build;
+
+   begin
+      Result := (others => <>);
+      Status := Success;
+      declare
+         Final, Entry_State : State_Id;
+      begin
+         Emit (Accept_State, 0, 0, Final);
+         Build (Root, Final, Entry_State);
+         pragma Assert (Expansions <= 65_536);
+         Result.Start := Entry_State;
+      end;
       Result.Valid := Status = Success;
+   end Compile_Tree;
+
+   procedure Compile
+     (Pattern : String; Result : out Program; Status : out Compile_Status)
+   is
+      Nodes : Tree;
+      Root  : Node_Id;
+   begin
+      Result := (others => <>);
+      Parse (Pattern, Nodes, Root, Status);
+      if Status = Success then
+         Compile_Tree (Nodes, Root, Result, Status);
+      end if;
    end Compile;
 
    function Is_Valid (Self : Program) return Boolean
@@ -1023,6 +2517,370 @@ is
       end if;
    end Model_States;
 
+   --  Reuse the proved closure algorithm to establish properties of the
+   --  independently defined model. This lemma is erased with other ghosts.
+   procedure Lemma_Model_Closure_Properties
+     (Self : Program; Seeds : State_Set; At_First, At_Last : Boolean)
+   with
+     Ghost => Static,
+     Pre   => Links_Valid (Self),
+     Post  =>
+       Epsilon_Closed
+         (Self,
+          Model_Closure (Self, Seeds, At_First, At_Last),
+          At_First,
+          At_Last)
+       and
+         (for all Id in 1 .. Self.Count =>
+            (if Seeds (Id)
+             then Model_Closure (Self, Seeds, At_First, At_Last) (Id)))
+   is
+      Reached : State_Set;
+   begin
+      Closure (Self, Seeds, At_First, At_Last, Reached);
+      pragma Assert (Reached = Model_Closure (Self, Seeds, At_First, At_Last));
+   end Lemma_Model_Closure_Properties;
+
+   procedure Lemma_Model_Edge
+     (Self           : Program;
+      Text           : String;
+      Whole          : Boolean;
+      Offset         : Natural;
+      Source, Target : Live_State)
+   with
+     Ghost => Static,
+     Pre   =>
+       Links_Valid (Self)
+       and then Offset <= Text'Length
+       and then Source <= Self.Count
+       and then Target <= Self.Count
+       and then Model_States (Self, Text, Whole, Offset) (Source)
+       and then
+         Epsilon_Edge (Self, Source, Target, Offset = 0, Offset = Text'Length),
+     Post  => Model_States (Self, Text, Whole, Offset) (Target)
+   is
+   begin
+      if Offset = 0 then
+         Lemma_Model_Closure_Properties
+           (Self, Model_Start (Self), True, Text'Length = 0);
+      else
+         Lemma_Model_Closure_Properties
+           (Self,
+            Model_Step
+              (Self,
+               Model_States (Self, Text, Whole, Offset - 1),
+               Text (Text'First + (Offset - 1)),
+               not Whole),
+            False,
+            Offset = Text'Length);
+      end if;
+   end Lemma_Model_Edge;
+
+   procedure Lemma_Model_Consume
+     (Self           : Program;
+      Text           : String;
+      Whole          : Boolean;
+      Offset         : Natural;
+      Source, Target : Live_State)
+   with
+     Ghost => Static,
+     Pre   =>
+       Links_Valid (Self)
+       and then Offset < Text'Length
+       and then Source <= Self.Count
+       and then Target <= Self.Count
+       and then
+         Consumes_To
+           (Self,
+            Model_States (Self, Text, Whole, Offset),
+            Text (Text'First + Offset),
+            Source,
+            Target),
+     Post  => Model_States (Self, Text, Whole, Offset + 1) (Target)
+   is
+   begin
+      Lemma_Model_Closure_Properties
+        (Self,
+         Model_Step
+           (Self,
+            Model_States (Self, Text, Whole, Offset),
+            Text (Text'First + Offset),
+            not Whole),
+         False,
+         Offset + 1 = Text'Length);
+   end Lemma_Model_Consume;
+
+   procedure Lemma_Path_States
+     (Self              : Program;
+      Entry_State, Stop : Live_State;
+      Text              : String;
+      Whole             : Boolean;
+      First, Last       : Natural;
+      Fuel              : Path_Steps)
+   with
+     Ghost              => Static,
+     Pre                =>
+       Links_Valid (Self)
+       and then Entry_State <= Self.Count
+       and then Stop <= Self.Count
+       and then First <= Last
+       and then Last <= Text'Length
+       and then Model_States (Self, Text, Whole, First) (Entry_State)
+       and then
+         Fragment_Path (Self.Code, Entry_State, Stop, Text, First, Last, Fuel),
+     Post               => Model_States (Self, Text, Whole, Last) (Stop),
+     Subprogram_Variant => (Decreases => Fuel)
+   is
+      Target : State_Id;
+   begin
+      if Entry_State /= Stop then
+         case Self.Code (Entry_State).Op is
+            when Consume             =>
+               Target := Self.Code (Entry_State).Next_1;
+               Lemma_Model_Consume
+                 (Self, Text, Whole, First, Entry_State, Target);
+               Lemma_Path_States
+                 (Self, Target, Stop, Text, Whole, First + 1, Last, Fuel - 1);
+
+            when Split               =>
+               if Fragment_Path
+                    (Self.Code,
+                     Self.Code (Entry_State).Next_1,
+                     Stop,
+                     Text,
+                     First,
+                     Last,
+                     Fuel - 1)
+               then
+                  Target := Self.Code (Entry_State).Next_1;
+               else
+                  Target := Self.Code (Entry_State).Next_2;
+               end if;
+               Lemma_Model_Edge
+                 (Self, Text, Whole, First, Entry_State, Target);
+               Lemma_Path_States
+                 (Self, Target, Stop, Text, Whole, First, Last, Fuel - 1);
+
+            when At_Start | At_End   =>
+               Target := Self.Code (Entry_State).Next_1;
+               Lemma_Model_Edge
+                 (Self, Text, Whole, First, Entry_State, Target);
+               Lemma_Path_States
+                 (Self, Target, Stop, Text, Whole, First, Last, Fuel - 1);
+
+            when Dead | Accept_State =>
+               null;
+         end case;
+      end if;
+   end Lemma_Path_States;
+
+   function Boundary_Seeds
+     (Self : Program; Text : String; Whole : Boolean; Offset : Natural)
+      return State_Set
+   is (if Offset = 0
+       then Model_Start (Self)
+       else
+         Model_Step
+           (Self,
+            Model_States (Self, Text, Whole, Offset - 1),
+            Text (Text'First + (Offset - 1)),
+            not Whole))
+   with Ghost => Static, Pre => Offset <= Text'Length;
+
+   procedure Lemma_Model_Seeds
+     (Self : Program; Text : String; Whole : Boolean; Offset : Natural)
+   with
+     Ghost => Static,
+     Pre   => Offset <= Text'Length,
+     Post  =>
+       (for all Id in State_Id =>
+          Model_States (Self, Text, Whole, Offset) (Id)
+          = Epsilon_Reach
+              (Self,
+               Boundary_Seeds (Self, Text, Whole, Offset),
+               Offset = 0,
+               Offset = Text'Length,
+               Id,
+               Self.Count))
+   is
+   begin
+      if Offset = 0 then
+         Lemma_Reach_Extensional
+           (Self,
+            Boundary_Seeds (Self, Text, Whole, Offset),
+            Model_Start (Self),
+            True,
+            Text'Length = 0,
+            Self.Count);
+      else
+         Lemma_Reach_Extensional
+           (Self,
+            Boundary_Seeds (Self, Text, Whole, Offset),
+            Model_Step
+              (Self,
+               Model_States (Self, Text, Whole, Offset - 1),
+               Text (Text'First + (Offset - 1)),
+               not Whole),
+            False,
+            Offset = Text'Length,
+            Self.Count);
+      end if;
+   end Lemma_Model_Seeds;
+
+   function Reverse_Budget
+     (Self : Program; Offset, Epsilon_Steps : Natural) return Path_Steps
+   is (Path_Steps (Offset)
+       * (Path_Steps (Self.Count) + 1)
+       + Path_Steps (Epsilon_Steps))
+   with Ghost => Static, Pre => Epsilon_Steps <= Self.Count;
+
+   --  Reconstruct a prefix backwards while carrying an already valid suffix
+   --  to an accepting state. The accepting endpoint cannot occur inside the
+   --  prefix because it has no outgoing instructions.
+   procedure Lemma_Reach_Prepend
+     (Self                        : Program;
+      Source, Stop                : Live_State;
+      Text                        : String;
+      Whole                       : Boolean;
+      Offset, Last, Epsilon_Steps : Natural;
+      Fuel                        : Path_Steps;
+      First                       : out Natural;
+      Total_Fuel                  : out Path_Steps)
+   with
+     Ghost              => Static,
+     Pre                =>
+       Internal_Valid (Self)
+       and then Self.Valid
+       and then Source <= Self.Count
+       and then Stop <= Self.Count
+       and then Self.Code (Stop).Op = Accept_State
+       and then Offset <= Last
+       and then Last <= Text'Length
+       and then Epsilon_Steps <= Self.Count
+       and then
+         Fuel <= Path_Steps'Last - Reverse_Budget (Self, Offset, Epsilon_Steps)
+       and then
+         Epsilon_Reach
+           (Self,
+            Boundary_Seeds (Self, Text, Whole, Offset),
+            Offset = 0,
+            Offset = Text'Length,
+            Source,
+            Epsilon_Steps)
+       and then
+         Fragment_Path (Self.Code, Source, Stop, Text, Offset, Last, Fuel),
+     Post               =>
+       First <= Offset
+       and then (if Whole then First = 0)
+       and then
+         Total_Fuel <= Fuel + Reverse_Budget (Self, Offset, Epsilon_Steps)
+       and then
+         Fragment_Path
+           (Self.Code, Self.Start, Stop, Text, First, Last, Total_Fuel),
+     Subprogram_Variant => (Decreases => Offset, Decreases => Epsilon_Steps)
+   is
+      Seeds : constant State_Set := Boundary_Seeds (Self, Text, Whole, Offset);
+   begin
+      if Seeds (Source) then
+         if Offset = 0 or else (not Whole and Source = Self.Start) then
+            First := Offset;
+            Total_Fuel := Fuel;
+            return;
+         end if;
+         for Pred in 1 .. Self.Count loop
+            if Consumes_To
+                 (Self,
+                  Model_States (Self, Text, Whole, Offset - 1),
+                  Text (Text'First + (Offset - 1)),
+                  Pred,
+                  Source)
+            then
+               pragma
+                 Assert
+                   (Fragment_Path
+                      (Self.Code,
+                       Pred,
+                       Stop,
+                       Text,
+                       Offset - 1,
+                       Last,
+                       Fuel + 1));
+               Lemma_Model_Seeds (Self, Text, Whole, Offset - 1);
+               Lemma_Reach_Prepend
+                 (Self,
+                  Pred,
+                  Stop,
+                  Text,
+                  Whole,
+                  Offset - 1,
+                  Last,
+                  Self.Count,
+                  Fuel + 1,
+                  First,
+                  Total_Fuel);
+               return;
+            end if;
+            pragma
+              Loop_Invariant
+                (for all K in 1 .. Pred =>
+                   not Consumes_To
+                         (Self,
+                          Model_States (Self, Text, Whole, Offset - 1),
+                          Text (Text'First + (Offset - 1)),
+                          K,
+                          Source));
+         end loop;
+      else
+         for Pred in 1 .. Self.Count loop
+            if Epsilon_Edge
+                 (Self, Pred, Source, Offset = 0, Offset = Text'Length)
+              and then
+                Epsilon_Reach
+                  (Self,
+                   Seeds,
+                   Offset = 0,
+                   Offset = Text'Length,
+                   Pred,
+                   Epsilon_Steps - 1)
+            then
+               pragma
+                 Assert
+                   (Fragment_Path
+                      (Self.Code, Pred, Stop, Text, Offset, Last, Fuel + 1));
+               Lemma_Reach_Prepend
+                 (Self,
+                  Pred,
+                  Stop,
+                  Text,
+                  Whole,
+                  Offset,
+                  Last,
+                  Epsilon_Steps - 1,
+                  Fuel + 1,
+                  First,
+                  Total_Fuel);
+               return;
+            end if;
+            pragma
+              Loop_Invariant
+                (for all K in 1 .. Pred =>
+                   not (Epsilon_Edge
+                          (Self, K, Source, Offset = 0, Offset = Text'Length)
+                        and then
+                          Epsilon_Reach
+                            (Self,
+                             Seeds,
+                             Offset = 0,
+                             Offset = Text'Length,
+                             K,
+                             Epsilon_Steps - 1)));
+         end loop;
+      end if;
+      First := 0;
+      Total_Fuel := 0;
+      pragma Assert (False);
+   end Lemma_Reach_Prepend;
+
    function Accepting (Self : Program; Items : State_Set) return Boolean
    is (for some Id in 1 .. Self.Count =>
          Items (Id) and Self.Code (Id).Op = Accept_State)
@@ -1037,6 +2895,130 @@ is
           else
             (for some Offset in 0 .. Text'Length =>
                Accepting (Self, Model_States (Self, Text, Whole, Offset)))));
+
+   procedure Lemma_Model_Entry
+     (Self : Program; Text : String; Whole : Boolean; Offset : Natural)
+   with
+     Ghost => Static,
+     Pre   =>
+       Internal_Valid (Self)
+       and then Self.Valid
+       and then Offset <= Text'Length
+       and then (not Whole or Offset = 0),
+     Post  => Model_States (Self, Text, Whole, Offset) (Self.Start)
+   is
+   begin
+      if Offset = 0 then
+         Lemma_Model_Closure_Properties
+           (Self, Model_Start (Self), True, Text'Length = 0);
+      else
+         Lemma_Model_Closure_Properties
+           (Self,
+            Model_Step
+              (Self,
+               Model_States (Self, Text, Whole, Offset - 1),
+               Text (Text'First + (Offset - 1)),
+               not Whole),
+            False,
+            Offset = Text'Length);
+      end if;
+   end Lemma_Model_Entry;
+
+   procedure Lemma_Path_Accepts
+     (Self        : Program;
+      Stop        : Live_State;
+      Text        : String;
+      Whole       : Boolean;
+      First, Last : Natural;
+      Fuel        : Path_Steps)
+   with
+     Ghost => Static,
+     Pre   =>
+       Internal_Valid (Self)
+       and then Self.Valid
+       and then Stop <= Self.Count
+       and then Self.Code (Stop).Op = Accept_State
+       and then First <= Last
+       and then Last <= Text'Length
+       and then (if Whole then First = 0 and Last = Text'Length)
+       and then
+         Fragment_Path (Self.Code, Self.Start, Stop, Text, First, Last, Fuel),
+     Post  =>
+       NFA_Accepts (Self, Text, Whole)
+       and (if Whole then Full_Match (Self, Text) else Search (Self, Text))
+   is
+   begin
+      Lemma_Model_Entry (Self, Text, Whole, First);
+      Lemma_Path_States
+        (Self, Self.Start, Stop, Text, Whole, First, Last, Fuel);
+      pragma Assert (Accepting (Self, Model_States (Self, Text, Whole, Last)));
+   end Lemma_Path_Accepts;
+
+   procedure Lemma_Accepts_Path
+     (Self        : Program;
+      Text        : String;
+      Whole       : Boolean;
+      First, Last : out Natural;
+      Stop        : out Live_State;
+      Fuel        : out Path_Steps)
+   with
+     Ghost => Static,
+     Pre   => Internal_Valid (Self) and then NFA_Accepts (Self, Text, Whole),
+     Post  =>
+       Stop <= Self.Count
+       and then Self.Code (Stop).Op = Accept_State
+       and then First <= Last
+       and then Last <= Text'Length
+       and then (if Whole then First = 0 and Last = Text'Length)
+       and then Fuel <= Reverse_Budget (Self, Last, Self.Count)
+       and then
+         Fragment_Path (Self.Code, Self.Start, Stop, Text, First, Last, Fuel)
+   is
+   begin
+      for Offset in 0 .. Text'Length loop
+         if not Whole or else Offset = Text'Length then
+            for Id in 1 .. Self.Count loop
+               if Self.Code (Id).Op = Accept_State
+                 and then Model_States (Self, Text, Whole, Offset) (Id)
+               then
+                  Lemma_Model_Seeds (Self, Text, Whole, Offset);
+                  Lemma_Reach_Prepend
+                    (Self,
+                     Id,
+                     Id,
+                     Text,
+                     Whole,
+                     Offset,
+                     Offset,
+                     Self.Count,
+                     0,
+                     First,
+                     Fuel);
+                  Stop := Id;
+                  Last := Offset;
+                  return;
+               end if;
+               pragma
+                 Loop_Invariant
+                   (for all K in 1 .. Id =>
+                      not (Self.Code (K).Op = Accept_State
+                           and then
+                             Model_States (Self, Text, Whole, Offset) (K)));
+            end loop;
+         end if;
+         pragma
+           Loop_Invariant
+             (for all K in 0 .. Offset =>
+                (if not Whole or K = Text'Length
+                 then
+                   not Accepting (Self, Model_States (Self, Text, Whole, K))));
+      end loop;
+      First := 0;
+      Last := 0;
+      Stop := 1;
+      Fuel := 0;
+      pragma Assert (False);
+   end Lemma_Accepts_Path;
 
    function Run (Self : Program; Text : String; Whole : Boolean) return Boolean
    with

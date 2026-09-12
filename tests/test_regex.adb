@@ -38,6 +38,16 @@ begin
    Check ("(a?|b?)*c", "abbac", True, True);
    Check ("(a?|b?)*c", "abba", False, False);
    Check ("((^|$)|())*x", "x", True, True);
+   --  Mandatory empty copies retain absolute anchor conditions.
+   Check ("(^$){2,}", "", True, True);
+   Check ("(^$){2,}", "a", False, False);
+   Check ("a(^){2}", "a", False, False);
+   Check ("a($){2}", "a", True, True);
+   Check ("(a?){2,3}", "", True, True);
+   Check ("(a?){2,3}", "aaa", True, True);
+   Check ("(a?){2,3}", "aaaa", True, False);
+   Check ("(^|a){2,}", "a", True, True);
+   Check ("(^|a){2,}", "xa", True, False);
    Check ("a{2,4}", "aaa", True, True);
    Check ("a{2,}", "aaaaa", True, True);
    Check ("a{0}", "", True, True);

@@ -132,3 +132,126 @@ nullable cycles and worklists filled exactly to capacity. The script retains
 logs, command statuses, source hashes and timings under ignored `validation/`.
 The proof still covers the default instance; custom capacities, stack space
 and a formal machine-cost model remain outside this evidence.
+
+## Tree semantics and compiler fragment boundaries — 2026-09-11
+
+The full validation sequence passed, with **all 556 checks proved**, zero
+justified checks, and zero unproved checks:
+
+| Category | Checks |
+| --- | ---: |
+| Data dependencies | 9 |
+| Initialization | 31 |
+| Runtime checks | 250 |
+| Assertions | 74 |
+| Functional contracts | 118 |
+| Termination | 74 |
+
+Parsing and tree compilation now have separate proved contracts. The parser
+returns a structurally valid tree with backward child references and valid
+finite repetition bounds. Tree compilation accepts that contract and keeps
+resource failures separate from syntax errors. Successful recursive builds
+preserve the existing program, create no accepting or dead instructions, and
+have no outgoing fragment edges except to their supplied continuation.
+
+The independent `Matches` span model covers every tree constructor, including
+absolute anchors and nullable repetition. Its mutually recursive definitions
+have proved termination. `Lemma_Empty_Repetition` and `Lemma_Nullable` prove
+exact empty-span characterizations. The model and lemmas use `Ghost => Static`
+and do not execute in either build mode.
+
+This is progress toward compiler refinement, not a proof of tree-to-NFA
+language equivalence or parser language refinement. `PROOF.md` retains both
+open obligations and identifies the needed fragment-path composition and
+nullable-loop arguments.
+
+Validation uses `python3 scripts/validate.py` with the same toolchain and proof
+settings as the simulator milestone. The Ada regressions additionally cover
+mandatory empty repetitions, finite nullable repetitions, and absolute anchors
+inside mandatory copies. The differential/CLI suite remains 1,198 checks over
+290 patterns in both build modes.
+
+The local receipt is `validation/20260911T213545Z/summary.json`, with command
+logs in the same directory. It records successful release tests, contract-mode
+tests, flow analysis, and proof. Its hashes record the code at that milestone;
+the evidence paragraph was added after validation.
+
+## Fragment paths and NFA acceptance — 2026-09-12
+
+The full validation sequence passed, with **all 883 checks proved**, zero
+justified checks, and zero unproved checks:
+
+| Category | Checks |
+| --- | ---: |
+| Data dependencies | 9 |
+| Initialization | 41 |
+| Runtime checks | 417 |
+| Assertions | 88 |
+| Functional contracts | 224 |
+| Termination | 104 |
+
+The new stopping-path model has proved budget monotonicity, preservation under
+changes outside the fragment, and composition/decomposition at a fragment's
+continuation. Successful leaf compilation now has a structural contract with
+a proved equivalence to tree span matching for empty nodes, byte sets, and
+both anchors.
+
+The path model is connected to the NFA simulator in both directions:
+`Lemma_Path_Accepts` proves that a valid accepting path implies the appropriate
+`Search` or `Full_Match` result. `Lemma_Accepts_Path` reconstructs an accepting
+path from NFA acceptance, including its span and a representable budget bounded
+by `Last * (State_Count + 1) + State_Count`. The proofs preserve absolute
+anchors, allow epsilon cycles, and handle search restarts. All new semantic
+models and lemmas are `Ghost => Static`.
+
+Compound compiler language refinement and parser grammar refinement remain
+open in `PROOF.md`. The compiler reports seven unused static lemma procedures;
+GNATprove checks their bodies and contracts. The compiler refinement still
+needs to apply these theorems to compound construction.
+
+`python3 scripts/validate.py` passed release tests, executable-contract tests,
+flow analysis, and proof with the established toolchain/settings. Both test
+modes passed the Ada cases and **1,198 differential/CLI checks over 290 patterns**.
+The local receipt and logs are in `validation/20260912T030526Z/`; source and test
+hashes identify that milestone. This verification section was added afterward.
+
+## Compound construction certificates — 2026-09-12
+
+The initial `make prove` run reported **1,356 of 1,358 checks proved**.
+Two preservation invariants in `Lemma_Shape_Preserve` timed out, in the
+concatenation and repetition cases. The code already contained compound
+construction certificates beyond the objectives recorded in `PROOF.md`.
+
+The witness-search invariants now retain the negated existential form of
+their loop guards: every visited cut has no joining middle state. This is
+logically equivalent to the previous universal negation. The mandatory-copy
+search uses the same form. No contracts were weakened and no assumptions or
+proof suppressions were introduced.
+
+With the established proof settings, **all 1,358 checks are now proved**,
+with zero justified or unproved checks:
+
+| Category | Checks |
+| --- | ---: |
+| Data dependencies | 9 |
+| Initialization | 41 |
+| Runtime checks | 657 |
+| Assertions | 131 |
+| Functional contracts | 380 |
+| Termination | 140 |
+
+Successful `Build` establishes `Compiled_Shape` for every tree constructor,
+including mandatory copies, bounded optional copies and patched unbounded
+loops. Frame lemmas preserve these certificates across changes outside their
+code intervals. Successful `Compile_Tree` establishes a root certificate
+ending at accepting state 1. Compound language equivalence and parser grammar
+refinement remain open; `PROOF.md` now states the completed structural step
+and the remaining semantic obligations.
+
+`python3 scripts/validate.py` passed release tests, executable-contract tests,
+flow analysis and proof. Both test modes passed the Ada cases and **1,198
+differential/CLI checks over 290 patterns**. The receipt and command logs are
+in `validation/20260912T080650Z/`. Source and test hashes match this proof pass;
+this verification section was added afterward. Compiler warnings remain for
+unused ghost lemmas, an unused formal parameter, and intentionally swapped
+code arrays in symmetric frame proofs; GNATprove reports no warnings.

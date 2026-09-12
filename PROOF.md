@@ -68,13 +68,121 @@ that it preserves every instruction present on entry, including on failure.
 In particular, patching an unbounded repetition's split cannot modify a
 previously compiled continuation.
 
-These are preservation facts, not compiler language equivalence.
+Successful `Build` also establishes `Fragment_Closed`: every newly emitted
+instruction is consuming, splitting, or an anchor; each of its active edges
+stays in the newly allocated interval or points to `Next`. Its entry is either
+`Next` or a newly allocated state. This includes the patched split of an
+unbounded repetition.
+
+For leaves, successful `Build` establishes `Leaf_Compiled`, describing the
+empty continuation or the exact byte/anchor instruction it emitted.
+`Lemma_Leaf_Path` proves that this contract makes `Matches` equivalent to
+`Fragment_Path` for every span and every positive path budget.
+
+Successful `Build` also establishes `Compiled_Shape` for every constructor.
+This independent structural relation inspects the allocated code interval:
+
+- Concatenation has a boundary and middle state joining the right child,
+  compiled first, to the left child.
+- Alternation has two child intervals and a final split to their entries.
+- `Copies_Shape` describes the mandatory copies; `Optional_Shape` describes
+  each bounded optional copy and its bypass split.
+- `Tail_Shape` describes either the bounded optional suffix or an unbounded
+  split whose body returns to that split and whose other edge exits to `Next`.
+
+The shape frame lemmas prove that changing instructions outside the allocated
+interval preserves these certificates, including when patching the unbounded
+split. The join lemmas assemble child certificates. `Compile_Tree` proves
+that successful compilation has an accepting instruction at state 1 and a
+root certificate with state 1 as its continuation. These are structural
+guarantees; compound `Matches`/`Fragment_Path` equivalence remains open.
+
+## Tree contracts and span semantics
+
+`Parse` and `Compile_Tree` now have separate contracts. `Parse` proves
+`Tree_Valid`: child references point backward, concatenation and alternation
+have two nonzero children, repetition has a nonzero child, and finite bounds
+satisfy `Low <= High`. Successful parsing returns a nonzero root. Parser frame
+invariants bound every reference by the allocated prefix. `Add` proves fresh
+allocation, exact node storage, and preservation of all earlier nodes.
+
+`Compile_Tree` consumes this structural contract. Recursive `Build` calls
+prove that their node arguments are live and decrease, without runtime checks
+for malformed trees. Tree compilation can return only success, state-capacity
+failure, or expansion-limit failure; syntax errors belong to parsing.
+
+The independent ghost function `Matches (Nodes, Id, Text, First, Last)` now
+interprets tree spans. It handles empty nodes, byte sets, absolute anchors,
+concatenation by a split point, alternation, and repetition. It calls neither
+parser, compiler, nor simulator. Offsets are relative to the whole input,
+including when the Ada string has a nonstandard lower bound.
+
+`Repeated_Matches` permits empty mandatory copies and decrements their lower
+bound. Bounded optional copies decrement the upper bound. Once the lower
+bound of an unbounded repetition is satisfied, additional copies advance the
+text position; empty copies are omitted. Lexicographic variants prove
+termination even for nullable repeated subtrees.
+
+`Lemma_Empty_Repetition` proves that a repetition accepts an empty span exactly
+when its lower bound is zero or its child accepts that empty span.
+`Lemma_Nullable` lifts this to every tree constructor: empty-span `Matches`
+is equivalent to the structural `Nullable` predicate with the appropriate
+absolute-anchor flags. These lemmas do not yet relate nullable syntax to
+compiled epsilon paths.
+
+## Fragment paths and simulator equivalence
+
+`Fragment_Path (Code, Entry, Stop, Text, First, Last, Fuel)` describes a path
+of at most `Fuel` instruction edges consuming exactly the span `First .. Last`.
+It stops immediately at `Stop`, accepting there only when the entire span has
+been consumed. It never reads or executes that continuation instruction.
+Consuming edges advance one byte; split and permitted anchor edges preserve
+the offset. Anchors use absolute input boundaries. Sentinel zero, dead
+instructions, and accepting instructions cannot be traversed. The ghost
+`Path_Steps` counter is a nonnegative `Long_Long_Integer`; termination decreases
+this counter and never assumes that an edge consumes a byte.
+
+The following lemmas are proved:
+
+- `Lemma_Path_Monotone`: increasing the budget preserves a path.
+- `Lemma_Path_Frame`: changing code outside a closed fragment preserves its
+  paths. In particular, the continuation instruction may change, which is
+  needed when patching an unbounded repetition's split.
+- `Lemma_Path_Compose`: a path through a closed fragment to its continuation
+  composes with a path from that continuation, with the sum of the budgets.
+  Its precondition checks that this sum is representable.
+- `Lemma_Path_Decompose`: a path through the same boundary yields a span split
+  and two path budgets that partition the original budget. This establishes
+  the reverse direction of composition, including empty spans and cycles.
+- `Lemma_Path_States`: a path from a state active at `First` leaves its endpoint
+  active at `Last` in `Model_States`.
+- `Lemma_Path_Accepts`: a path from a valid program's entry to a live accepting
+  state implies `NFA_Accepts` and the corresponding `Search` or `Full_Match`
+  result. Whole matching requires span `0 .. Text'Length`; search permits any
+  span within the input.
+- `Lemma_Accepts_Path`: conversely, NFA acceptance constructs an accepting
+  state, span, and path witness. Its budget is at most
+  `Last * (State_Count + 1) + State_Count`, with proved arithmetic bounds.
+
+The reverse construction (`Lemma_Reach_Prepend`) follows epsilon predecessors
+back to a boundary seed, then consuming predecessors back to the previous text
+boundary. It carries a valid suffix to an accepting state. That accepting
+state has no outgoing edges, so it cannot be traversed earlier in the prefix.
+Search may stop reconstruction at an entry-state restart; whole matching must
+reach the initial boundary. Its lexicographic variant decreases the text
+offset or the remaining epsilon steps.
+
+Thus the path relation and the simulator model agree on acceptance for valid
+programs. `Fragment_Path` is independent of the simulator. The bridge proof
+reuses the already proved `Closure` contract to establish that `Model_Closure`
+is closed and contains its seeds; this does not change either semantic model's
+definition.
 
 ## Full regex theorem still open
 
-A full theorem needs an independent grammar and a span interpretation
-`Matches (Tree, Text, First, Last)`, with anchors evaluated against the whole
-text. For successful compilation of a pattern to `P`, the intended result is:
+A full theorem still needs an independent pattern grammar and proofs linking
+parsing, the tree span interpretation, and NFA acceptance. For successful
+compilation of a pattern to `P`, the intended result remains:
 
 - whole matching iff the parsed tree matches span `0 .. Text'Length`;
 - search iff the parsed tree matches some span with
@@ -85,20 +193,28 @@ Two semantic layers remain unproved and are not asserted as assumptions:
 1. **Parser refinement.** Relate consumed pattern bytes, active frames and
    allocated nodes to the grammar. This must cover precedence, empty
    alternatives, grouping, byte classes and escapes, repetition bounds, and
-   errors. Existing parser contracts prove bounds/progress, not this relation.
-2. **Compiler refinement.** Relate `Build (Node, Next, Entry)` to the tree's
-   span interpretation, stopping fragment paths at `Next`. The argument must
+   errors. Existing parser contracts prove bounds, progress, and tree structure,
+   not this language relation.
+2. **Compiler refinement.** Extend the proved leaf correspondence to compound
+   `Build (Node, Next, Entry)` results. The span and stopping-path interpretations
+   are now defined, with composition and preservation lemmas. The argument must
    compose concatenation and alternation, account for optional and mandatory
    copies, and handle the patched back edge of unbounded repetitions. Empty
    matches and anchored nullable cycles require an explicit argument, not an
    assumption that every repetition consumes a byte. Resource failures must
    remain separate from successful language equivalence.
 
-The current monolithic compiler keeps its tree and construction information
-local. A next proof pass should give parsing and tree compilation separate
-contracts, with a structural fragment relation and preservation lemmas, then
-connect that relation to NFA paths. Merely defining pattern semantics by calling
-`Compile` would make the missing compiler claim circular.
+The structural construction relation and its `Build` postcondition are proved.
+The next compiler obligation is to connect `Compiled_Shape` to `Matches` and
+`Fragment_Path`, using the existing path composition and frame lemmas. This
+requires both extracting tree matches from paths and constructing paths with
+representable budgets from tree matches. In particular,
+the unbounded-loop argument must justify omitting empty copies while preserving
+mandatory copies and absolute anchors. The nullable lemmas characterize empty
+tree spans; they do not discharge that language argument. The path-to-simulator
+bridge is proved, so a compound compiler theorem can use it directly.
+Merely defining pattern semantics by calling `Compile` would make the missing
+compiler claim circular.
 
 ## Proof and execution boundary
 
