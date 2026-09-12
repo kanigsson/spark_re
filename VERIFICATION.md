@@ -255,3 +255,54 @@ in `validation/20260912T080650Z/`. Source and test hashes match this proof pass;
 this verification section was added afterward. Compiler warnings remain for
 unused ghost lemmas, an unused formal parameter, and intentionally swapped
 code arrays in symmetric frame proofs; GNATprove reports no warnings.
+
+## Tree compiler soundness and completeness — 2026-09-12
+
+The committed baseline (`7f29364`) proved all 1,358 checks. The compiler
+refinement now proves **all 2,149 checks**, with zero justified or unproved
+checks, using the same GNAT Pro 27/GNATprove toolchain and proof settings:
+
+| Category | Checks |
+| --- | ---: |
+| Data dependencies | 9 |
+| Initialization | 84 |
+| Runtime checks | 1,109 |
+| Assertions | 173 |
+| Functional contracts | 591 |
+| Termination | 183 |
+
+For every structurally valid tree whose compilation succeeds, the executable
+whole-match result equals the independent tree-span interpretation over the
+whole input, and search equals that interpretation over some input span.
+`Lemma_Compiler_Correct` proves these equivalences from the compiler's
+construction certificate. `Compile_Tree_For_Text` applies the theorem to an
+actual compiler call and retains explicit resource-failure outcomes.
+
+The proof covers every constructor. It extracts child boundaries, derives
+closed code intervals, decomposes accepting paths into tree matches, and
+constructs paths from tree matches. Mandatory empty copies retain their lower
+bound and anchor conditions. Empty unbounded iterations can be omitted in the
+soundness argument because the remaining path matches the same span; the path
+budget decreases even when no byte is consumed. The constructive argument
+uses only advancing extra unbounded copies, as specified by `Repeated_Matches`.
+
+Path budgets now use mathematical nonnegative integers instead of machine
+integers. Their addition cannot overflow when composing witnesses, and all
+budgets remain finite. The path/simulator bridge and its reverse witness bound
+were reproved with this representation. Additional check counts include the
+big-integer validity and nonnegativity checks. This arithmetic occurs only in
+static ghost code. Undefined-symbol inspection of both compiled `regex.o`
+builds found no big-integer or allocation-routine references.
+
+`python3 scripts/validate.py` passed release tests, executable-contract tests,
+flow analysis and proof. Both test modes passed the Ada cases and **1,198
+differential/CLI checks over 290 patterns**. The final receipt and logs are in
+`validation/20260912T082933Z/`; code, tests and proof-objective hashes match this
+pass. This evidence section was added afterward. GNATprove reports no warnings,
+assumptions or proof suppressions; ordinary compiler warnings still identify
+unused ghost helpers and the existing symmetric frame calls.
+
+The proof covers the default `Regex` instantiation. It closes the tree-to-NFA
+language gap, but parser refinement against an independent pattern grammar
+remains open in `PROOF.md`. Stack capacity and a machine-cost model remain
+outside this evidence.

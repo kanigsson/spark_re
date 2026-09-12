@@ -1,9 +1,10 @@
 # Correctness proof and remaining obligations
 
-This attempt proves correctness of the NFA simulator. It does **not** yet
-prove that a pattern compiles to an NFA accepting exactly the pattern's
-language. `NFA_Accepts` describes the supplied program's instructions; it does
-not interpret pattern syntax.
+The tree compiler and NFA simulator are proved sound and complete against
+independent tree-span and instruction-path models. The remaining semantic gap
+is parsing: there is no proved relation between pattern bytes and an independent
+pattern grammar. `NFA_Accepts` describes instructions, and `Matches` interprets
+tree nodes; neither interprets pattern syntax.
 
 ## Proved simulator specification
 
@@ -94,8 +95,9 @@ The shape frame lemmas prove that changing instructions outside the allocated
 interval preserves these certificates, including when patching the unbounded
 split. The join lemmas assemble child certificates. `Compile_Tree` proves
 that successful compilation has an accepting instruction at state 1 and a
-root certificate with state 1 as its continuation. These are structural
-guarantees; compound `Matches`/`Fragment_Path` equivalence remains open.
+root certificate with state 1 as its continuation. The compiler theorem below
+uses these certificates to establish `Matches`/`Fragment_Path` correspondence
+for every constructor.
 
 ## Tree contracts and span semantics
 
@@ -127,8 +129,8 @@ termination even for nullable repeated subtrees.
 when its lower bound is zero or its child accepts that empty span.
 `Lemma_Nullable` lifts this to every tree constructor: empty-span `Matches`
 is equivalent to the structural `Nullable` predicate with the appropriate
-absolute-anchor flags. These lemmas do not yet relate nullable syntax to
-compiled epsilon paths.
+absolute-anchor flags. The compiler theorem also covers these empty spans,
+relating them to compiled epsilon paths.
 
 ## Fragment paths and simulator equivalence
 
@@ -139,8 +141,9 @@ been consumed. It never reads or executes that continuation instruction.
 Consuming edges advance one byte; split and permitted anchor edges preserve
 the offset. Anchors use absolute input boundaries. Sentinel zero, dead
 instructions, and accepting instructions cannot be traversed. The ghost
-`Path_Steps` counter is a nonnegative `Long_Long_Integer`; termination decreases
-this counter and never assumes that an edge consumes a byte.
+`Path_Steps` counter is a mathematical nonnegative integer (`Big_Natural`);
+termination decreases this counter and never assumes that an edge consumes a
+byte. Its uses are static ghost code, erased in both executable build modes.
 
 The following lemmas are proved:
 
@@ -150,7 +153,9 @@ The following lemmas are proved:
   needed when patching an unbounded repetition's split.
 - `Lemma_Path_Compose`: a path through a closed fragment to its continuation
   composes with a path from that continuation, with the sum of the budgets.
-  Its precondition checks that this sum is representable.
+  Mathematical budgets avoid an artificial machine-integer ceiling when
+  composing witnesses. `Closed_Interval` describes internal code intervals,
+  so the lemma also applies to child fragments inside a larger program.
 - `Lemma_Path_Decompose`: a path through the same boundary yields a span split
   and two path budgets that partition the original budget. This establishes
   the reverse direction of composition, including empty spans and cycles.
@@ -162,7 +167,7 @@ The following lemmas are proved:
   span within the input.
 - `Lemma_Accepts_Path`: conversely, NFA acceptance constructs an accepting
   state, span, and path witness. Its budget is at most
-  `Last * (State_Count + 1) + State_Count`, with proved arithmetic bounds.
+  `Last * (State_Count + 1) + State_Count`.
 
 The reverse construction (`Lemma_Reach_Prepend`) follows epsilon predecessors
 back to a boundary seed, then consuming predecessors back to the previous text
@@ -178,43 +183,61 @@ reuses the already proved `Closure` contract to establish that `Model_Closure`
 is closed and contains its seeds; this does not change either semantic model's
 definition.
 
-## Full regex theorem still open
+## Tree compiler correctness
 
-A full theorem still needs an independent pattern grammar and proofs linking
-parsing, the tree span interpretation, and NFA acceptance. For successful
-compilation of a pattern to `P`, the intended result remains:
+For every `Tree_Valid` tree, root and input text, successful `Compile_Tree`
+establishes:
 
-- whole matching iff the parsed tree matches span `0 .. Text'Length`;
-- search iff the parsed tree matches some span with
+- `Full_Match (P, Text) = Matches (Nodes, Root, Text, 0, Text'Length)`;
+- `Search (P, Text)` iff some span `First .. Last` matches the root, with
   `0 <= First <= Last <= Text'Length`.
 
-Two semantic layers remain unproved and are not asserted as assumptions:
+`Tree_Accepts` states these two interpretations. `Lemma_Compiler_Correct`
+proves equivalence to `NFA_Accepts` and the executable matching functions from
+the compiler's structural guarantees. `Compile_Tree_For_Text` applies that
+theorem to an actual `Compile_Tree` call for an arbitrary supplied text. Its
+contract keeps state-capacity and expansion failures separate from success.
 
-1. **Parser refinement.** Relate consumed pattern bytes, active frames and
-   allocated nodes to the grammar. This must cover precedence, empty
-   alternatives, grouping, byte classes and escapes, repetition bounds, and
-   errors. Existing parser contracts prove bounds, progress, and tree structure,
-   not this language relation.
-2. **Compiler refinement.** Extend the proved leaf correspondence to compound
-   `Build (Node, Next, Entry)` results. The span and stopping-path interpretations
-   are now defined, with composition and preservation lemmas. The argument must
-   compose concatenation and alternation, account for optional and mandatory
-   copies, and handle the patched back edge of unbounded repetitions. Empty
-   matches and anchored nullable cycles require an explicit argument, not an
-   assumption that every repetition consumes a byte. Resource failures must
-   remain separate from successful language equivalence.
+`Shape_Parts`, `Copies_Parts` and `Optional_Parts` extract construction
+witnesses. The four `Lemma_*_Closed` procedures prove that every fragment's
+edges stay inside its interval or reach its continuation, and that its entry
+is internal or the continuation. These are derived from the structural
+certificates, including certificates for subintervals of the final code.
 
-The structural construction relation and its `Build` postcondition are proved.
-The next compiler obligation is to connect `Compiled_Shape` to `Matches` and
-`Fragment_Path`, using the existing path composition and frame lemmas. This
-requires both extracting tree matches from paths and constructing paths with
-representable budgets from tree matches. In particular,
-the unbounded-loop argument must justify omitting empty copies while preserving
-mandatory copies and absolute anchors. The nullable lemmas characterize empty
-tree spans; they do not discharge that language argument. The path-to-simulator
-bridge is proved, so a compound compiler theorem can use it directly.
-Merely defining pattern semantics by calling `Compile` would make the missing
-compiler claim circular.
+`Lemma_Shape_Sound` extracts a tree match from a stopping path. Concatenation
+decomposes at the child boundary; alternation follows the selected split.
+Repetition uses separate lemmas for mandatory copies and the optional or
+unbounded suffix. Mandatory empty copies remain mandatory. On an unbounded
+loop, a nonempty body provides the advancing span witness required by
+`Repeated_Matches`; an empty body is discarded because the recursively proved
+suffix already matches the same span. Induction decreases the path budget even
+when the text offset does not advance. Anchors retain their absolute offsets.
+
+`Lemma_Shape_Complete` constructs a finite stopping-path witness from a tree
+match. It composes child paths and includes the required split edges. Mandatory
+copies decrease their count, bounded optional copies decrease their upper
+bound, and extra unbounded copies decrease the remaining text span. Thus empty
+mandatory copies and nullable unbounded bodies both terminate without assuming
+that every copy consumes a byte. Mathematical budgets can always be added;
+the executable compiler and simulator retain their original bounded storage.
+
+The final acceptance argument uses the fact that the root fragment has no
+accepting instruction: state 1 is the only live accepting state. The existing
+path/simulator bridge then supplies both directions of the theorem.
+
+## Parser grammar refinement still open
+
+The next semantic obligation is an independent pattern grammar and a proof
+that `Parse` implements it. Relate consumed pattern bytes, active frames and
+allocated nodes to that grammar, covering precedence, empty alternatives,
+grouping, byte classes and escapes, repetition bounds, and syntax errors.
+Resource failures must remain distinct from syntax rejection. Existing parser
+contracts prove bounds, progress and tree structure, which suffice to apply
+the compiler theorem, but do not establish this pattern-language relation.
+
+A full pattern theorem must connect that independent byte interpretation to
+`Matches`, then use the proved compiler/simulator equivalence. Defining pattern
+semantics by calling `Parse` or `Compile` would not close this gap.
 
 ## Proof and execution boundary
 

@@ -123,10 +123,13 @@ the declarative `NFA_Accepts` model. Compile status agrees with validity;
 instruction targets stay inside the compiled prefix; recursive compilation
 preserves existing instructions; invalid programs reject input.
 
-Full pattern-language correctness remains unproved: the parser and compiler
-are not yet proved to preserve regex-language semantics. Their behavior is
-differential-test backed. [PROOF.md](PROOF.md) defines the simulator theorem
-and the remaining parser/compiler obligations.
+The tree compiler is also proved sound and complete: successful compilation
+preserves the independent tree-span semantics for every constructor, including
+nullable repetition and absolute anchors. Full pattern-language correctness
+still requires parser refinement against an independent grammar. Parsing is
+currently covered by structural contracts and differential tests.
+[PROOF.md](PROOF.md) states the compiler/simulator theorems and the remaining
+parser obligation.
 
 Recursive semantic models and proof certificates use SPARK's `Static` ghost
 level. They are proved but never executed, including in contract-enabled
