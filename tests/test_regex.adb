@@ -17,6 +17,13 @@ procedure Test_Regex is
       pragma Assert (Regex.Search (P, Text) = Found);
       pragma Assert (Regex.Full_Match (P, Text) = Whole);
    end Check;
+   procedure Reject (Pattern : String) is
+   begin
+      Regex.Compile (Pattern, P, Status);
+      pragma Assert (Status = Regex.Syntax_Error);
+      pragma Assert (not Regex.Is_Valid (P));
+      pragma Assert (not Regex.Search (P, "anything"));
+   end Reject;
    Offset_Pattern : constant String (17 .. 19) := "a+b";
    Offset_Text    : constant String (Integer'Last - 2 .. Integer'Last) :=
      "aab";
@@ -66,6 +73,81 @@ begin
       Check ("[^\" & Byte & "]", [1 => Byte], False, False);
       Check (".", [1 => Byte], True, True);
    end loop;
+   Check ("|||", "", True, True);
+   Check ("a||bc", "bc", True, True);
+   Check ("(a|)b", "b", True, True);
+   Check ("a()b", "ab", True, True);
+   Check ("((|a)b|c)", "ab", True, True);
+   Reject ("(|*)");
+   Reject ("a{1}*");
+   Reject ("(a))");
+   Reject ("((a)");
+   Tiny.Compile ("(((a)))", T, TS);
+   pragma Assert (TS = Tiny.Success);
+   pragma Assert (Tiny.Full_Match (T, "a"));
+   Tiny.Compile ("((((a))))", T, TS);
+   pragma Assert (TS = Tiny.Node_Limit);
+   --  Lexical grammar boundaries: decimal saturation, leading zeros, and
+   --  punctuation whose interpretation differs inside/outside a class.
+   Check ("a{0002,0003}", "aaa", True, True);
+   Check ("a{0002,}", "aaaa", True, True);
+   Check ("a{255}", [1 .. 255 => 'a'], True, True);
+   Check ("a{0,255}", "", True, True);
+   Check ("a{" & String'(1 .. 300 => '0') & "2}", "aa", True, True);
+   Check ("[a-cb-d]", "d", True, True);
+   Check ("[^a-cb-d]", "d", False, False);
+   Check ("[\--0]", "/", True, True);
+   Check ("[\[-\]]", "\", True, True);
+   Check ("[]]", "]", True, True);
+   Check ("[-]", "-", True, True);
+   Check ("[a-]", "-", True, True);
+   Check ("[\^]", "^", True, True);
+   Check ("\{", "{", True, True);
+   for B in Character loop
+      --  Raw byte order, including NUL and the highest byte, in a range.
+      Check
+        ("[\" & Character'First & "-\" & Character'Last & "]",
+         [1 => B],
+         True,
+         True);
+   end loop;
+   Reject ("a{}");
+   Reject ("a{,2}");
+   Reject ("a{2,,3}");
+   Reject ("a{2,1}");
+   Reject ("a{256}");
+   Reject ("a{0,256}");
+   Reject ("a{0256,}");
+   Reject ("a{" & String'(1 .. 300 => '9') & "}");
+   Reject ("a{2x}");
+   Reject ("a{2,3x}");
+   Reject ("a{2,3");
+   Reject ("[]");
+   Reject ("[^");
+   Reject ("[^]");
+   Reject ("[a-\]");
+   Reject ("[\]");
+   Reject ("[b-a]");
+   Reject ("[[.x.]]");
+   Reject ("[[=x=]]");
+   Reject ("[[:alpha:]]");
+   Reject ("\a");
+   Reject ("\");
+   declare
+      High_Class : constant String (Integer'Last - 4 .. Integer'Last) :=
+        "[a-c]";
+      High_Bound : constant String (Integer'Last - 5 .. Integer'Last) :=
+        "a{2,3}";
+      High_Bad   : constant String (Integer'Last - 1 .. Integer'Last) := "[\";
+   begin
+      Check (High_Class, "b", True, True);
+      Check (High_Bound, "aa", True, True);
+      Reject (High_Bad);
+   end;
+   Tiny.Compile ("abc.", T, TS);
+   pragma Assert (TS = Tiny.Node_Limit);
+   Tiny.Compile ("abc[", T, TS);
+   pragma Assert (TS = Tiny.Syntax_Error);
    --  The epsilon closure fills all three available worklist slots.
    Tiny.Compile ("a*", T, TS);
    pragma Assert (TS = Tiny.Success and Tiny.State_Count (T) = 3);

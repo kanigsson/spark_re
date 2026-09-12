@@ -125,11 +125,12 @@ preserves existing instructions; invalid programs reject input.
 
 The tree compiler is also proved sound and complete: successful compilation
 preserves the independent tree-span semantics for every constructor, including
-nullable repetition and absolute anchors. Full pattern-language correctness
-still requires parser refinement against an independent grammar. Parsing is
-currently covered by structural contracts and differential tests.
-[PROOF.md](PROOF.md) states the compiler/simulator theorems and the remaining
-parser obligation.
+nullable repetition and absolute anchors. Lexical scanners prove acceptance,
+rejection and exact token contents. Successful parsing now proves a derivation
+in an independent expression grammar, and the composed theorem connects that
+derived tree to executable matching. Parser completeness, structural syntax
+rejection, and a pattern-only denotation independent of the chosen derivation
+remain open. [PROOF.md](PROOF.md) states the theorems and remaining obligations.
 
 Recursive semantic models and proof certificates use SPARK's `Static` ghost
 level. They are proved but never executed, including in contract-enabled

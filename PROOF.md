@@ -1,10 +1,13 @@
 # Correctness proof and remaining obligations
 
 The tree compiler and NFA simulator are proved sound and complete against
-independent tree-span and instruction-path models. The remaining semantic gap
-is parsing: there is no proved relation between pattern bytes and an independent
-pattern grammar. `NFA_Accepts` describes instructions, and `Matches` interprets
-tree nodes; neither interprets pattern syntax.
+independent tree-span and instruction-path models. Lexical scanning is proved
+against independent byte-span definitions, and successful parsing constructs
+a derivation in an independent expression grammar. The composed theorem
+retains that derived tree as its interpretation of the pattern.
+
+Remaining obligations are parser completeness and structural syntax rejection,
+and a pattern-only denotation independent of the chosen grammar derivation.
 
 ## Proved simulator specification
 
@@ -225,19 +228,108 @@ The final acceptance argument uses the fact that the root fragment has no
 accepting instruction: state 1 is the only live accepting state. The existing
 path/simulator bridge then supplies both directions of the theorem.
 
-## Parser grammar refinement still open
+## Lexical grammar refinement
 
-The next semantic obligation is an independent pattern grammar and a proof
-that `Parse` implements it. Relate consumed pattern bytes, active frames and
-allocated nodes to that grammar, covering precedence, empty alternatives,
-grouping, byte classes and escapes, repetition bounds, and syntax errors.
-Resource failures must remain distinct from syntax rejection. Existing parser
-contracts prove bounds, progress and tree structure, which suffice to apply
-the compiler theorem, but do not establish this pattern-language relation.
+The executable parser now uses separately contracted scanners. Their static
+models read pattern bytes directly and call neither the scanners nor `Parse`:
 
-A full pattern theorem must connect that independent byte interpretation to
-`Matches`, then use the proved compiler/simulator equivalence. Defining pattern
-semantics by calling `Parse` or `Compile` would not close this gap.
+- `Decimal_Digits`, `Decimal_Value` and `Numeral_End` define a maximal decimal
+  numeral. The value recurrence saturates at 256; `Lemma_Decimal_Saturated`
+  proves that further digits cannot turn overflow into an accepted bound.
+  `Scan_Number` succeeds exactly when the numeral is nonempty and at most 255,
+  and returns its exact value and endpoint. Failure has either a missing-digit
+  or an overflowing-prefix witness. Leading zeros remain valid.
+- `Class_Unit_Valid`, `Class_Unit_End` and `Class_Unit_Byte` specify literal and
+  escaped class bytes, excluding recognizable POSIX class/collation syntax.
+  `Class_Piece_Valid` adds optional ordered inclusive ranges. The corresponding
+  scanners succeed exactly when these predicates hold and return exact bytes
+  and endpoints.
+- `Class_Tail_Valid`, `Class_Tail_End` and `Class_Tail_Has` give a recursive
+  class grammar and its byte membership. A first `]` belongs to the first
+  piece; a subsequent unescaped `]` closes the class. `Range_Follows` states
+  when a hyphen introduces a range. `Class_Syntax` adds the opening bracket,
+  optional negation, closing endpoint, and membership for all 256 bytes.
+  `Scan_Class` proves both acceptance and rejection, as well as exact set
+  construction. Its iterative union invariant relates the accumulated set
+  and remaining class suffix to the complete class; negation complements it.
+- `Bounds_Valid`, `Quantifier_Valid` and `Quantifier_Model` specify `*`, `+`,
+  `?`, `{n}`, `{n,m}` and `{n,}`. `Scan_Quantifier` succeeds exactly for these
+  forms, with exact bounds, unboundedness and endpoint. Missing delimiters,
+  missing/oversized numerals and descending bounds reject.
+- `Leaf_Valid` and `Leaf_Syntax` cover literal bytes, dot, absolute anchors,
+  classes, and the restricted set of outside-class escapes. `Scan_Leaf`
+  proves exact node kind/byte set and endpoint, and rejects exactly the invalid
+  leaf starts within its caller precondition.
+
+All spans are offsets, including for strings ending at `Integer'Last`. The
+scanners produce only `Success` or `Syntax_Error`; node/state/expansion limits
+belong to their callers. The parser retains its existing error propagation
+when an allocation failure precedes a malformed leaf. These contracts describe
+one token from a supplied boundary, not acceptance of the entire pattern.
+
+## Successful parser grammar refinement
+
+`Grammar (Pattern, Nodes, Id, First, Last, Level)` relates pattern spans to
+syntax trees using four precedence levels:
+
+```text
+expression ::= term | expression "|" term
+term       ::= empty | factor | term factor
+factor     ::= atom | atom quantifier
+atom       ::= leaf | "(" expression ")"
+```
+
+Leaves and quantifiers use the independently specified lexical relations.
+The empty term requires an empty node. Concatenation, alternation and
+repetition require the corresponding node kind and child derivations;
+grouping wraps an expression without allocating a node. A repeated factor's
+child must derive an atom, so another postfix quantifier requires grouping.
+The grammar calls neither `Parse` nor any executable scanner. Its recursive
+variant decreases the node identifier, pattern-span length, or precedence
+level; grouping decreases the span even when it retains the node identifier.
+
+`Lemma_Grammar_Frame` and `Lemma_Frame_Syntax_Frame` prove that preserving a
+tree's allocated prefix preserves its existing grammar derivations. `Add`
+applies these lemmas to the active frames when it allocates a fresh node.
+
+Each active parser frame has static ghost pattern offsets for its start,
+current term start, and flushed-term endpoint. `Frame_Syntax` relates its
+expression, term and pending atom to those spans. An expression prefix ends
+at an actual alternation separator. Suspended frames end at the following
+frame's opening parenthesis and have no pending atom. The ghost cursor marks
+the boundary whose frame derivation is established while a scanner advances
+the executable cursor over the next token.
+
+`Flush_Atom` proves concatenation of the term and pending atom. `Flush_Term`
+proves the empty term or joins the completed term to the expression prefix.
+The main loop proves opening/closing groups, alternation, leaf attachment,
+and attachment of a single quantifier. The successful `Parse` postcondition
+now establishes `Grammar` for the root over the complete pattern, in addition
+to `Tree_Valid` and a nonzero root.
+
+`Compile_With_Tree` is the shared executable parse/compile operation used by
+public `Compile`. It retains the successful grammar derivation and compiled
+root certificate. For any supplied text and whole/search mode,
+`Compile_Pattern_For_Text` calls that same operation and applies the compiler
+theorem. On success, both `NFA_Accepts` and the executable matching result equal
+`Tree_Accepts` for the returned grammar-derived tree. Failure leaves an invalid
+program and makes no matching-language claim.
+
+## Remaining pattern obligations
+
+The successful-parse theorem is soundness of the constructed derivation.
+It does not prove parser completeness: a pattern with a grammar derivation
+must never produce `Syntax_Error`, with capacity failures allowed separately.
+Equivalently, structural syntax rejection still needs a proof that no grammar
+derivation exists. The lexical scanners already prove their own acceptance
+and rejection conditions.
+
+The composed matching theorem keeps the derived tree as an explicit witness.
+To obtain a single pattern-only acceptance predicate, also prove that grammar
+derivations have the same span semantics, or define a canonical pattern
+denotation and prove refinement to it. Defining that predicate by calling
+`Parse` or `Compile` would not establish this independence. Stack capacity and
+an exact machine-cost/resource sufficiency theorem remain outside the proof.
 
 ## Proof and execution boundary
 

@@ -306,3 +306,54 @@ The proof covers the default `Regex` instantiation. It closes the tree-to-NFA
 language gap, but parser refinement against an independent pattern grammar
 remains open in `PROOF.md`. Stack capacity and a machine-cost model remain
 outside this evidence.
+
+## Lexical refinement and parser grammar soundness — 2026-09-12
+
+The committed baseline (`6863971`) proved all 2,149 checks. This pass proves
+**all 2,858 checks**, with zero justified or unproved checks, using the same
+GNAT Pro 27/GNATprove toolchain and proof options:
+
+| Category | Checks |
+| --- | ---: |
+| Data dependencies | 9 |
+| Initialization | 104 |
+| Runtime checks | 1,388 |
+| Assertions | 233 |
+| Functional contracts | 885 |
+| Termination | 239 |
+
+The lexical scanners prove acceptance, rejection, endpoints and exact token
+contents against independent byte-span definitions. These cover decimal
+bounds and overflow, ranges and class negation, escaped bytes, anchors, dot,
+and every repetition form. The expression grammar separately specifies
+precedence, empty terms/alternatives, grouping and quantifier attachment.
+Successful `Parse` now proves that its root derives the complete pattern.
+Frame and allocation-preservation lemmas connect the iterative parser to
+that grammar without calling the parser from the model.
+
+`Compile_With_Tree` is the executable parse/compile operation shared by public
+`Compile` and the new `Compile_Pattern_For_Text` proof. For an arbitrary text
+and whole/search mode, the latter proves that successful compilation returns
+a grammar-derived tree whose span semantics agree with both NFA acceptance
+and executable matching. This remains a theorem with an explicit derived-tree
+witness: parser completeness, structural syntax rejection, and a pattern-only
+denotation independent of the chosen derivation remain open in `PROOF.md`.
+
+`python3 scripts/validate.py` passed release tests, executable-contract tests,
+flow analysis and proof. Both test modes passed the expanded Ada cases and
+**1,198 differential/CLI checks over 290 patterns**. New Ada cases exercise
+leading zeros and oversized bounds, overlapping/negated ranges, all byte
+values in a range, malformed escapes/classes/bounds, high string indices,
+empty alternatives and nested groups, and parser frame/node limits.
+
+The receipt and command logs are in `validation/20260912T223952Z/`. All recorded
+file hashes matched after validation; only this evidence section was added
+afterward. GNATprove analyzed all 154 subprograms/packages in the default
+`Regex` instance, with no warnings, assumptions or proof suppressions.
+Inspection of release and checks `regex.o` files found no new lexical/grammar
+model symbols or big-integer/allocation-routine references. Static ghost spans,
+models, snapshots and lemmas do not execute in either build mode.
+
+The evidence covers the default instantiation. Custom capacities need their
+own proof run; available stack space and exact resource sufficiency remain
+outside this theorem.
