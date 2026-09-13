@@ -69,6 +69,35 @@ package Spark_Re with SPARK_Mode is
    pragma
      Postcondition
        (Static => Full_Match'Result = NFA_Accepts (Self, Text, True));
+
+   --  Pattern-only language semantics, independent of parsing, tree
+   --  allocation, compilation, and simulation.
+   function Pattern_Accepts
+     (Pattern, Text : String; Whole : Boolean) return Boolean
+   with Ghost => Static, Global => null;
+
+   --  Apply the actual compilation operation and prove its result for any
+   --  supplied text. Capacity failures remain explicit.
+   procedure Compile_For_Text
+     (Pattern, Text : String;
+      Whole         : Boolean;
+      Result        : out Program;
+      Status        : out Compile_Status)
+   with
+     Ghost => Static,
+     Post  =>
+       Well_Formed (Result)
+       and then (Is_Valid (Result) = (Status = Success))
+       and then
+         (if Status = Success
+          then
+            NFA_Accepts (Result, Text, Whole)
+            = Pattern_Accepts (Pattern, Text, Whole)
+            and then
+              (if Whole
+               then Full_Match (Result, Text)
+               else Search (Result, Text))
+              = Pattern_Accepts (Pattern, Text, Whole));
 private
    package Trees is new Spark_Re_Trees (Max_Nodes);
    package Matching is new Trees.Matching (Max_States);

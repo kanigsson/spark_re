@@ -516,3 +516,50 @@ The receipt and command logs are in `validation/20260913T032302Z/`; proof took
 62.748 seconds. All recorded source hashes matched after validation. Only this
 evidence section was added afterward. The proof covers the default `Regex`
 instantiation; custom capacities require their own proof run.
+
+## Derivation-independent matching — 2026-09-13
+
+From baseline `0c29779` (3,076 checks), **all 3,664 checks are proved**, with
+zero justified and zero unproved checks. The GNAT Pro 27 compiler, local
+GNATprove, and `--level=2 --timeout=20 --prover=cvc5,z3 --counterexamples=off
+-j4` settings are unchanged. A forced `-f` run also passed all 3,664 checks.
+
+| Category | Checks |
+| --- | ---: |
+| Data dependencies | 18 |
+| Initialization | 113 |
+| Runtime checks | 1,666 |
+| Assertions | 301 |
+| Functional contracts | 1,242 |
+| Termination | 324 |
+
+`Lemma_Grammar_Matches` proves that every complete grammar derivation agrees
+with the byte-only `Pattern_Matches` denotation on every supplied text span.
+`Lemma_Derivation_Independent` equates any two such derivations. The proof
+covers different node allocations and tree shapes, including an extra empty
+left term, grouping, classes, escapes, absolute anchors, and nullable bounded
+or unbounded repetition. The model neither constructs trees nor calls the
+parser, compiler, or executable scanners.
+
+The public `Compile_For_Text` theorem composes this result with the compiler
+proof: on success, NFA acceptance and executable whole/search matching equal
+`Pattern_Accepts`. Its contract has no tree witness. This closes the remaining
+matching-language gap. Resource sufficiency and stack capacity remain outside
+the theorem; custom instantiations require their own proof run.
+
+All additions are static ghost models, lemmas, and contracts. Executable
+parsing, compilation, and matching are unchanged. There are no assumptions,
+proof suppressions, or weakened contracts. `Lemma_Grammar_Accepts` hides the
+two span predicates' bodies and uses their proved equality to lift the result
+to existential search acceptance. Both predicates remain independently proved.
+
+`python3 scripts/validate.py` passed release tests, executable-contract tests,
+flow analysis (234 checks), and proof. Both test modes passed the Ada cases and
+**1,198 differential/CLI checks over 290 patterns**. Flow and proof reported no
+warnings; the existing ordinary compiler warnings remain in the matching unit.
+Inspection of release and checks `regex.o` files found no new model/theorem
+symbols or allocation/big-integer references.
+
+The final receipt, command logs, proof summary, and object-symbol check are in
+`validation/20260913T041756Z/`; proof took 60.456 seconds. All recorded source
+hashes matched after validation. Only this evidence section was added afterward.

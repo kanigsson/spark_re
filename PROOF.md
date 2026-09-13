@@ -1,49 +1,51 @@
-# Correctness proof and remaining obligations
+# Correctness proof
 
 The tree compiler and NFA simulator are proved sound and complete against
 independent tree-span and instruction-path models. Lexical scanning is proved
 against independent byte-span definitions, and successful parsing constructs
 a derivation in an independent expression grammar. Parser completeness proves
 that a pattern with any such derivation cannot produce `Syntax_Error`;
-resource failures remain explicit. The composed matching theorem retains the
-derived tree as its interpretation of the pattern.
-
-The remaining language obligation is a pattern-only matching denotation
-independent of the chosen grammar derivation.
+resource failures remain explicit. Every grammar derivation has the same span
+semantics as the byte-only `Pattern_Matches` denotation. The public
+`Compile_For_Text` theorem connects successful compilation to `Pattern_Accepts`
+for both whole matching and search, independently of the chosen derivation.
 
 ## Unit structure
 
-The proof is split across four units so that each layer's obligations can be
+The proof is split across units so that each layer's obligations can be
 discharged, and re-discharged, on its own:
 
 | Unit | Contents | Proves |
 | --- | --- | --- |
 | `Spark_Re_Common` | limits, `Compile_Status`, `Byte_Set` | nothing; no body |
 | `Spark_Re_Trees` | tree types, `Tree_Valid`, `Matches`, `Nullable` | span semantics and its empty-span lemmas |
-| `Spark_Re_Trees.Parsing` | scanners, lexical models, `Grammar`, `Pattern_Valid`, `Parse` | lexical refinement, parser soundness and completeness |
+| `Spark_Re_Trees.Parsing` | scanners, lexical models, `Grammar`, `Pattern_Valid`, `Pattern_Matches`, `Parse` | lexical refinement, parser soundness and completeness, derivation-independent matching |
 | `Spark_Re_Trees.Matching` | instructions, `Compile_Tree`, simulator, path model | tree-to-NFA equivalence and the simulator model |
 | `Spark_Re` | facade | composition only |
 
 The two large layers share only the tree. `Spark_Re_Trees.Parsing` never names
-a program, an instruction or a state; `Spark_Re_Trees.Matching` never names a
+a program, an instruction or an NFA state; `Spark_Re_Trees.Matching` never names a
 pattern span, a scanner or a grammar level. Neither withs the other. The
 parser-completeness proof lives entirely inside the parsing unit and uses no
 compiler or simulator theorem.
 
-Three predicates are declared in a spec and defined in the corresponding body,
+The following predicates are declared in a spec and defined in its body,
 so that a client carries them without being able to unfold them:
 
 - `Grammar` is the parser's derivation relation. `Parse` produces it and the
   facade passes it on; only the parser body sees what it means.
 - `Pattern_Valid` is byte-only syntax acceptance. Grammar derivations imply
   it, and `Parse` cannot report a syntax error when it holds.
+- `Pattern_Matches` gives byte-only span semantics; clients use the grammar
+  refinement lemmas without unfolding its lexical walk.
 - `Tree_Compiled` is the matcher's construction certificate, packaging the
   accepting state and root `Compiled_Shape` that `Compile_Tree` establishes and
   `Lemma_Compiler_Correct` consumes. The facade joins a parse result to a
   compile result without seeing the instruction layout.
 
-`Compile_Pattern_For_Text`, the composed theorem, is consequently a three-line
-body over two opaque certificates.
+`Compile_Pattern_For_Text` composes the parser and compiler certificates with
+the grammar-to-pattern matching theorem. The public `Compile_For_Text` wrapper
+hides the intermediate tree entirely.
 
 ## Proved simulator specification
 
@@ -392,14 +394,57 @@ no exact resource-sufficiency claim is made.
 
 All added definitions, lemmas and loop certificates are static ghost code.
 
-## Remaining pattern obligation
+## Derivation-independent pattern matching
 
-The composed matching theorem keeps the derived tree as an explicit witness.
-To obtain a single pattern-only acceptance predicate, also prove that grammar
-derivations have the same span semantics, or define a canonical pattern
-denotation and prove refinement to it. Defining that predicate by calling
-`Parse` or `Compile` would not establish this independence. Stack capacity and
-an exact machine-cost/resource sufficiency theorem remain outside the proof.
+`Pattern_Matches (Pattern, Text, First, Last)` requires byte-only syntax
+validity and interprets the pattern directly. It calls neither `Grammar`,
+`Parse`, `Compile`, nor any executable scanner, and constructs no tree.
+`Pattern_Accepts` applies it to the whole text or existentially to any span.
+
+The independent `Walk` model consumes maximal lexical tokens while tracking
+group depth and the last top-level alternative, atom, and quantifier positions.
+Classes and escapes consume their complete token, so embedded punctuation
+cannot become a structural separator. Nested groups preserve the outer
+positions. `Lemma_Walk_Join` proves composition at a reached token boundary;
+`Lemma_Grammar_Walk` proves that every grammar span reaches its endpoint with
+balanced depth and the appropriate outer boundaries.
+
+`Denotes` uses those deterministic positions to interpret precedence. It splits
+expressions at their last top-level bar and terms at their last factor, applies
+the lexical quantifier bounds to atoms, and interprets group contents
+recursively. Leaves read the independently modeled byte sets and absolute
+anchors. `Repeat_Denotes` permits empty mandatory and finite optional copies;
+extra unbounded copies advance the text position. Its decreasing pattern span,
+precedence, repetition bounds, and text span establish termination without a
+fuel cutoff or an assumption that repeated atoms consume bytes.
+
+`Lemma_Denotation` proves equality to `Matches` for every grammar level and
+pattern/text span. The grammar induction fixes the denotation's split positions;
+`Lemma_Repeat_Denotation` supplies repetition congruence, including nullable
+atoms. An empty left term is eliminated using the empty-span identity. This
+case matters: the grammar can derive `a` with a leaf or with a concatenation of
+an empty node and that leaf. The theorem proves semantic equality without
+requiring identical tree shapes, node identifiers, or unused nodes.
+
+The public parser lemmas expose the result without unfolding the grammar:
+
+- `Lemma_Grammar_Matches`: every complete derivation agrees with
+  `Pattern_Matches` on any supplied text span.
+- `Lemma_Derivation_Independent`: any two complete derivations of the same
+  pattern agree on that span.
+- `Lemma_Grammar_Accepts`: the tree's whole/search interpretation equals
+  `Pattern_Accepts`.
+
+The facade's public `Compile_For_Text` invokes the same `Compile_With_Tree`
+operation as executable `Compile`, then composes grammar refinement with the
+compiler theorem. On success, both NFA acceptance and the selected executable
+`Full_Match` or `Search` equal `Pattern_Accepts (Pattern, Text, Whole)`. Its
+contract contains no tree witness. Compilation failures retain their explicit
+statuses; no resource-sufficiency theorem is claimed.
+
+This closes the remaining matching-language obligation. The denotation follows
+the project's byte grammar and Boolean span semantics; it does not specify
+captures, match-selection priority, or a different regex dialect.
 
 ## Proof and execution boundary
 
@@ -422,7 +467,9 @@ hide the recursive `Compiled_Shape`, `Copies_Shape`, `Optional_Shape` and
 digit spans are already certified by `Numeral_End`'s postcondition. Hiding is
 decided per verified entity, so `Lemma_Shape_Preserve` is a dispatch over three
 case lemmas plus the leaf case, which is the one place that still unfolds a
-certificate. These annotations prune context; they assert nothing.
+certificate. `Lemma_Grammar_Accepts` hides `Matches` and `Pattern_Matches`: its span
+quantification needs only their proved equality, not either recursive
+definition. These annotations prune context; they assert nothing.
 
 The evidence covers the default `Regex` instantiation. Other capacities need
 their own GNATprove run. Stack capacity and a formal machine-cost model are

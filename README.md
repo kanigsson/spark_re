@@ -130,9 +130,10 @@ rejection and exact token contents. Successful parsing now proves a derivation
 in an independent expression grammar, and the composed theorem connects that
 derived tree to executable matching. Parser completeness also proves that a
 pattern with a grammar derivation cannot produce a syntax error, with resource
-failures allowed separately. A pattern-only matching denotation independent
-of the chosen derivation remains open. [PROOF.md](PROOF.md) states the theorems
-and remaining obligation.
+failures allowed separately. Every derivation has the same span semantics as
+the byte-only `Pattern_Matches` denotation. The public `Compile_For_Text`
+theorem connects successful compilation to `Pattern_Accepts` for whole matching
+and search. [PROOF.md](PROOF.md) states the theorems and proof boundary.
 
 Recursive semantic models and proof certificates use SPARK's `Static` ghost
 level. They are proved but never executed, including in contract-enabled

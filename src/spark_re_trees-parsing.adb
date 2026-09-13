@@ -951,6 +951,1266 @@ is
    function Pattern_Valid (Pattern : String) return Boolean
    is (Syntax_Continuation (Pattern, 0, 0, No_Atom));
 
+   --  A deterministic lexical walk records only top-level separators. Tokens
+   --  inside classes and escapes are indivisible; nested groups do not change
+   --  the outer separator positions. This is a byte model, not a tree parser.
+   type Walk_State is record
+      Cursor, Depth                : Natural := 0;
+      Has_Bar, Has_Atom, Has_Quant : Boolean := False;
+      Bar, Atom, Quant             : Natural := 0;
+   end record;
+
+   function Walk_Valid (S : Walk_State) return Boolean
+   is (S.Depth <= S.Cursor
+       and then (if S.Has_Bar then S.Bar < S.Cursor)
+       and then (if S.Has_Atom then S.Atom < S.Cursor)
+       and then (if S.Has_Quant then S.Quant < S.Cursor))
+   with Ghost => Static;
+
+   function Token_End (Pattern : String; Pos : Natural) return Natural
+   is (if Quantifier_Valid (Pattern, Pos)
+       then Quantifier_Model (Pattern, Pos).Last
+       elsif Leaf_Valid (Pattern, Pos)
+       then Leaf_End (Pattern, Pos)
+       else Pos + 1)
+   with
+     Ghost => Static,
+     Pre   => Pos < Pattern'Length,
+     Post  => Token_End'Result in Pos + 1 .. Pattern'Length;
+
+   function Walk_Step (Pattern : String; S : Walk_State) return Walk_State
+   is ((Cursor    => Token_End (Pattern, S.Cursor),
+        Depth     =>
+          (if Byte_At (Pattern, S.Cursor) = '('
+           then S.Depth + 1
+           elsif Byte_At (Pattern, S.Cursor) = ')' and then S.Depth > 0
+           then S.Depth - 1
+           else S.Depth),
+        Has_Bar   =>
+          S.Has_Bar
+          or else (S.Depth = 0 and then Byte_At (Pattern, S.Cursor) = '|'),
+        Bar       =>
+          (if S.Depth = 0 and then Byte_At (Pattern, S.Cursor) = '|'
+           then S.Cursor
+           else S.Bar),
+        Has_Atom  =>
+          (if S.Depth /= 0
+           then S.Has_Atom
+           elsif Byte_At (Pattern, S.Cursor) = '|'
+           then False
+           elsif Byte_At (Pattern, S.Cursor) = '('
+             or else Leaf_Valid (Pattern, S.Cursor)
+           then True
+           else S.Has_Atom),
+        Atom      =>
+          (if S.Depth = 0
+             and then
+               (Byte_At (Pattern, S.Cursor) = '('
+                or else Leaf_Valid (Pattern, S.Cursor))
+           then S.Cursor
+           else S.Atom),
+        Has_Quant =>
+          (if S.Depth /= 0
+           then S.Has_Quant
+           elsif Byte_At (Pattern, S.Cursor) in '*' | '+' | '?' | '{'
+           then True
+           elsif Byte_At (Pattern, S.Cursor) in '(' | '|'
+             or else Leaf_Valid (Pattern, S.Cursor)
+           then False
+           else S.Has_Quant),
+        Quant     =>
+          (if S.Depth = 0
+             and then Byte_At (Pattern, S.Cursor) in '*' | '+' | '?' | '{'
+           then S.Cursor
+           else S.Quant)))
+   with
+     Ghost => Static,
+     Pre   => Walk_Valid (S) and then S.Cursor < Pattern'Length,
+     Post  =>
+       Walk_Valid (Walk_Step'Result)
+       and then Walk_Step'Result.Cursor = Token_End (Pattern, S.Cursor);
+
+   function Walk
+     (Pattern : String; Last : Natural; S : Walk_State) return Walk_State
+   is (if S.Cursor = Last or else Token_End (Pattern, S.Cursor) > Last
+       then S
+       else Walk (Pattern, Last, Walk_Step (Pattern, S)))
+   with
+     Ghost              => Static,
+     Pre                =>
+       Walk_Valid (S)
+       and then S.Cursor <= Last
+       and then Last <= Pattern'Length,
+     Post               =>
+       Walk_Valid (Walk'Result)
+       and then Walk'Result.Cursor in S.Cursor .. Last,
+     Subprogram_Variant => (Decreases => Last - S.Cursor);
+
+   procedure Lemma_Walk_Join
+     (Pattern : String; Middle, Last : Natural; S : Walk_State)
+   with
+     Ghost              => Static,
+     Pre                =>
+       Walk_Valid (S)
+       and then S.Cursor <= Middle
+       and then Middle <= Last
+       and then Last <= Pattern'Length
+       and then Walk (Pattern, Middle, S).Cursor = Middle,
+     Post               =>
+       Walk (Pattern, Last, S)
+       = Walk (Pattern, Last, Walk (Pattern, Middle, S)),
+     Subprogram_Variant => (Decreases => Middle - S.Cursor)
+   is
+   begin
+      if S.Cursor < Middle then
+         Lemma_Walk_Join (Pattern, Middle, Last, Walk_Step (Pattern, S));
+      end if;
+   end Lemma_Walk_Join;
+
+   function Outer_Equal (L, R : Walk_State) return Boolean
+   is (L.Has_Bar = R.Has_Bar
+       and then L.Bar = R.Bar
+       and then L.Has_Atom = R.Has_Atom
+       and then L.Atom = R.Atom
+       and then L.Has_Quant = R.Has_Quant
+       and then L.Quant = R.Quant)
+   with Ghost => Static;
+
+   function Bar_Equal (L, R : Walk_State) return Boolean
+   is (L.Has_Bar = R.Has_Bar and then L.Bar = R.Bar)
+   with Ghost => Static;
+
+   procedure Lemma_Grammar_Walk
+     (Pattern     : String;
+      Nodes       : Tree;
+      Id          : Live_Node;
+      First, Last : Natural;
+      Level       : Grammar_Level;
+      S           : Walk_State)
+   with
+     Ghost              => Static,
+     Pre                =>
+       Tree_Valid (Nodes)
+       and then First <= Last
+       and then Last <= Pattern'Length
+       and then Walk_Valid (S)
+       and then S.Cursor = First
+       and then Grammar (Pattern, Nodes, Id, First, Last, Level),
+     Post               =>
+       Walk (Pattern, Last, S).Cursor = Last
+       and then Walk (Pattern, Last, S).Depth = S.Depth
+       and then (if S.Depth > 0 then Outer_Equal (Walk (Pattern, Last, S), S))
+       and then
+         (if S.Depth = 0
+          then
+            (if Level /= Expr_Grammar
+             then Bar_Equal (Walk (Pattern, Last, S), S))
+            and then
+              (if Level in Atom_Grammar | Factor_Grammar
+               then
+                 Walk (Pattern, Last, S).Has_Atom
+                 and then Walk (Pattern, Last, S).Atom = First)
+            and then
+              (if Level = Atom_Grammar
+               then not Walk (Pattern, Last, S).Has_Quant)
+            and then
+              (if Level = Term_Grammar and then First < Last
+               then
+                 Walk (Pattern, Last, S).Has_Atom
+                 and then Walk (Pattern, Last, S).Atom >= First)),
+     Subprogram_Variant =>
+       (Decreases => Id, Decreases => Last - First, Decreases => Level)
+   is
+      M : Walk_State;
+   begin
+      case Level is
+         when Atom_Grammar   =>
+            if Leaf_Syntax (Pattern, First, Last, Nodes (Id)) then
+               pragma Assert (Token_End (Pattern, First) = Last);
+               pragma
+                 Assert (Walk (Pattern, Last, S) = Walk_Step (Pattern, S));
+            else
+               M := Walk_Step (Pattern, S);
+               Lemma_Grammar_Walk
+                 (Pattern, Nodes, Id, First + 1, Last - 1, Expr_Grammar, M);
+               Lemma_Walk_Join (Pattern, Last - 1, Last, M);
+               pragma
+                 Assert
+                   (Walk (Pattern, Last, S)
+                    = Walk_Step (Pattern, Walk (Pattern, Last - 1, M)));
+            end if;
+            pragma
+              Assert
+                (Walk (Pattern, Last, S)
+                 = (Walk_Step (Pattern, S)
+                    with delta Cursor => Last, Depth => S.Depth));
+
+         when Factor_Grammar =>
+            if Grammar (Pattern, Nodes, Id, First, Last, Atom_Grammar) then
+               Lemma_Grammar_Walk
+                 (Pattern, Nodes, Id, First, Last, Atom_Grammar, S);
+            else
+               for Cut in First + 1 .. Last - 1 loop
+                  if Grammar
+                       (Pattern,
+                        Nodes,
+                        Nodes (Id).Left,
+                        First,
+                        Cut,
+                        Atom_Grammar)
+                    and then Quantifier_Syntax (Pattern, Cut, Last, Nodes (Id))
+                  then
+                     Lemma_Grammar_Walk
+                       (Pattern,
+                        Nodes,
+                        Nodes (Id).Left,
+                        First,
+                        Cut,
+                        Atom_Grammar,
+                        S);
+                     Lemma_Walk_Join (Pattern, Cut, Last, S);
+                     pragma
+                       Assert
+                         (Walk (Pattern, Last, S)
+                          = Walk_Step (Pattern, Walk (Pattern, Cut, S)));
+                     pragma Assert (Walk (Pattern, Last, S).Cursor = Last);
+                     pragma Assert (Walk (Pattern, Last, S).Depth = S.Depth);
+                     pragma
+                       Assert
+                         (if S.Depth = 0 and then Level = Factor_Grammar
+                          then
+                            Walk (Pattern, Last, S).Has_Atom
+                            and then Walk (Pattern, Last, S).Atom = First);
+                     return;
+                  end if;
+                  pragma
+                    Loop_Invariant
+                      (for all K in First + 1 .. Cut =>
+                         not (Grammar
+                                (Pattern,
+                                 Nodes,
+                                 Nodes (Id).Left,
+                                 First,
+                                 K,
+                                 Atom_Grammar)
+                              and then
+                                Quantifier_Syntax
+                                  (Pattern, K, Last, Nodes (Id))));
+               end loop;
+            end if;
+
+         when Term_Grammar   =>
+            if First = Last and then Nodes (Id).Kind = Empty_Node then
+               null;
+            elsif Grammar (Pattern, Nodes, Id, First, Last, Factor_Grammar)
+            then
+               Lemma_Grammar_Walk
+                 (Pattern, Nodes, Id, First, Last, Factor_Grammar, S);
+            else
+               for Cut in First .. Last - 1 loop
+                  if Grammar
+                       (Pattern,
+                        Nodes,
+                        Nodes (Id).Left,
+                        First,
+                        Cut,
+                        Term_Grammar)
+                    and then
+                      Grammar
+                        (Pattern,
+                         Nodes,
+                         Nodes (Id).Right,
+                         Cut,
+                         Last,
+                         Factor_Grammar)
+                  then
+                     Lemma_Grammar_Walk
+                       (Pattern,
+                        Nodes,
+                        Nodes (Id).Left,
+                        First,
+                        Cut,
+                        Term_Grammar,
+                        S);
+                     M := Walk (Pattern, Cut, S);
+                     Lemma_Grammar_Walk
+                       (Pattern,
+                        Nodes,
+                        Nodes (Id).Right,
+                        Cut,
+                        Last,
+                        Factor_Grammar,
+                        M);
+                     Lemma_Walk_Join (Pattern, Cut, Last, S);
+                     pragma Assert (Walk (Pattern, Last, S).Cursor = Last);
+                     pragma Assert (Walk (Pattern, Last, S).Depth = S.Depth);
+                     return;
+                  end if;
+                  pragma
+                    Loop_Invariant
+                      (for all K in First .. Cut =>
+                         not (Grammar
+                                (Pattern,
+                                 Nodes,
+                                 Nodes (Id).Left,
+                                 First,
+                                 K,
+                                 Term_Grammar)
+                              and then
+                                Grammar
+                                  (Pattern,
+                                   Nodes,
+                                   Nodes (Id).Right,
+                                   K,
+                                   Last,
+                                   Factor_Grammar)));
+               end loop;
+            end if;
+
+         when Expr_Grammar   =>
+            if Grammar (Pattern, Nodes, Id, First, Last, Term_Grammar) then
+               Lemma_Grammar_Walk
+                 (Pattern, Nodes, Id, First, Last, Term_Grammar, S);
+            else
+               for Cut in First .. Last - 1 loop
+                  if Byte_At (Pattern, Cut) = '|'
+                    and then
+                      Grammar
+                        (Pattern,
+                         Nodes,
+                         Nodes (Id).Left,
+                         First,
+                         Cut,
+                         Expr_Grammar)
+                    and then
+                      Grammar
+                        (Pattern,
+                         Nodes,
+                         Nodes (Id).Right,
+                         Cut + 1,
+                         Last,
+                         Term_Grammar)
+                  then
+                     Lemma_Grammar_Walk
+                       (Pattern,
+                        Nodes,
+                        Nodes (Id).Left,
+                        First,
+                        Cut,
+                        Expr_Grammar,
+                        S);
+                     M := Walk_Step (Pattern, Walk (Pattern, Cut, S));
+                     Lemma_Grammar_Walk
+                       (Pattern,
+                        Nodes,
+                        Nodes (Id).Right,
+                        Cut + 1,
+                        Last,
+                        Term_Grammar,
+                        M);
+                     Lemma_Walk_Join (Pattern, Cut, Last, S);
+                     pragma Assert (Walk (Pattern, Last, S).Cursor = Last);
+                     pragma Assert (Walk (Pattern, Last, S).Depth = S.Depth);
+                     return;
+                  end if;
+                  pragma
+                    Loop_Invariant
+                      (for all K in First .. Cut =>
+                         not (Byte_At (Pattern, K) = '|'
+                              and then
+                                Grammar
+                                  (Pattern,
+                                   Nodes,
+                                   Nodes (Id).Left,
+                                   First,
+                                   K,
+                                   Expr_Grammar)
+                              and then
+                                Grammar
+                                  (Pattern,
+                                   Nodes,
+                                   Nodes (Id).Right,
+                                   K + 1,
+                                   Last,
+                                   Term_Grammar)));
+               end loop;
+            end if;
+      end case;
+      pragma Assert (Walk (Pattern, Last, S).Cursor = Last);
+      pragma Assert (Walk (Pattern, Last, S).Depth = S.Depth);
+   end Lemma_Grammar_Walk;
+
+   function Separators
+     (Pattern : String; First, Last : Natural) return Walk_State
+   is (Walk (Pattern, Last, (Cursor => First, others => <>)))
+   with Ghost => Static, Pre => First <= Last and then Last <= Pattern'Length;
+
+   function Leaf_Denotes
+     (Pattern     : String;
+      Start, Stop : Natural;
+      Text        : String;
+      First, Last : Natural) return Boolean
+   is (Leaf_Valid (Pattern, Start)
+       and then Stop = Leaf_End (Pattern, Start)
+       and then
+         (case Byte_At (Pattern, Start) is
+            when '^'    => First = Last and then First = 0,
+            when '$'    => First = Last and then Last = Text'Length,
+            when others =>
+              First < Last
+              and then Last - First = 1
+              and then
+                (case Byte_At (Pattern, Start) is
+                   when '.'    => True,
+                   when '['    =>
+                     Class_Tail_Has
+                       (Pattern,
+                        Class_Body (Pattern, Start),
+                        True,
+                        Text (Text'First + First))
+                     /= Class_Negated (Pattern, Start),
+                   when '\'    =>
+                     Text (Text'First + First) = Byte_At (Pattern, Start + 1),
+                   when others =>
+                     Text (Text'First + First) = Byte_At (Pattern, Start))))
+   with
+     Ghost => Static,
+     Pre   =>
+       Start <= Stop
+       and then Stop <= Pattern'Length
+       and then First <= Last
+       and then Last <= Text'Length;
+
+   function Denotes
+     (Pattern     : String;
+      Start, Stop : Natural;
+      Level       : Grammar_Level;
+      Text        : String;
+      First, Last : Natural) return Boolean
+   with
+     Ghost              => Static,
+     Pre                =>
+       Start <= Stop
+       and then Stop <= Pattern'Length
+       and then First <= Last
+       and then Last <= Text'Length,
+     Subprogram_Variant =>
+       (Decreases => Stop - Start,
+        Decreases => Level,
+        Decreases => Natural'(Max_Repetition + 1),
+        Decreases => Natural'(Max_Repetition + 1),
+        Decreases => Last - First);
+
+   function Repeat_Denotes
+     (Pattern                : String;
+      Start, Stop            : Natural;
+      Text                   : String;
+      First, Last, Low, High : Natural;
+      Unlimited              : Boolean) return Boolean
+   with
+     Ghost              => Static,
+     Pre                =>
+       Start <= Stop
+       and then Stop <= Pattern'Length
+       and then First <= Last
+       and then Last <= Text'Length
+       and then Low <= Max_Repetition
+       and then High <= Max_Repetition
+       and then (Unlimited or else Low <= High),
+     Subprogram_Variant =>
+       (Decreases => Stop - Start,
+        Decreases => Grammar_Level'(Factor_Grammar),
+        Decreases => Low,
+        Decreases => High,
+        Decreases => Last - First);
+
+   function Repeat_Denotes
+     (Pattern                : String;
+      Start, Stop            : Natural;
+      Text                   : String;
+      First, Last, Low, High : Natural;
+      Unlimited              : Boolean) return Boolean
+   is (if Low > 0
+       then
+         (for some Middle in First .. Last =>
+            Denotes (Pattern, Start, Stop, Atom_Grammar, Text, First, Middle)
+            and then
+              Repeat_Denotes
+                (Pattern,
+                 Start,
+                 Stop,
+                 Text,
+                 Middle,
+                 Last,
+                 Low - 1,
+                 (if Unlimited then High else High - 1),
+                 Unlimited))
+       elsif First = Last
+       then True
+       elsif Unlimited
+       then
+         (for some Middle in First + 1 .. Last =>
+            Denotes (Pattern, Start, Stop, Atom_Grammar, Text, First, Middle)
+            and then
+              Repeat_Denotes
+                (Pattern, Start, Stop, Text, Middle, Last, 0, High, True))
+       elsif High > 0
+       then
+         (for some Middle in First .. Last =>
+            Denotes (Pattern, Start, Stop, Atom_Grammar, Text, First, Middle)
+            and then
+              Repeat_Denotes
+                (Pattern, Start, Stop, Text, Middle, Last, 0, High - 1, False))
+       else False);
+
+   function Denotes
+     (Pattern     : String;
+      Start, Stop : Natural;
+      Level       : Grammar_Level;
+      Text        : String;
+      First, Last : Natural) return Boolean
+   is (case Level is
+         when Atom_Grammar   =>
+           Leaf_Denotes (Pattern, Start, Stop, Text, First, Last)
+           or else
+             (Stop - Start >= 2
+              and then Byte_At (Pattern, Start) = '('
+              and then Byte_At (Pattern, Stop - 1) = ')'
+              and then
+                Denotes
+                  (Pattern,
+                   Start + 1,
+                   Stop - 1,
+                   Expr_Grammar,
+                   Text,
+                   First,
+                   Last)),
+         when Factor_Grammar =>
+           (if Separators (Pattern, Start, Stop).Has_Quant
+              and then Separators (Pattern, Start, Stop).Quant > Start
+              and then Separators (Pattern, Start, Stop).Quant < Stop
+            then
+              Quantifier_Valid
+                (Pattern, Separators (Pattern, Start, Stop).Quant)
+              and then
+                Quantifier_Model
+                  (Pattern, Separators (Pattern, Start, Stop).Quant)
+                  .Last
+                = Stop
+              and then
+                Repeat_Denotes
+                  (Pattern,
+                   Start,
+                   Separators (Pattern, Start, Stop).Quant,
+                   Text,
+                   First,
+                   Last,
+                   Quantifier_Model
+                     (Pattern, Separators (Pattern, Start, Stop).Quant)
+                     .Low,
+                   Quantifier_Model
+                     (Pattern, Separators (Pattern, Start, Stop).Quant)
+                     .High,
+                   Quantifier_Model
+                     (Pattern, Separators (Pattern, Start, Stop).Quant)
+                     .Unlimited)
+            else
+              Denotes (Pattern, Start, Stop, Atom_Grammar, Text, First, Last)),
+         when Term_Grammar   =>
+           (if Start = Stop
+            then First = Last
+            elsif Separators (Pattern, Start, Stop).Has_Atom
+              and then Separators (Pattern, Start, Stop).Atom > Start
+              and then Separators (Pattern, Start, Stop).Atom < Stop
+            then
+              (for some Middle in First .. Last =>
+                 Denotes
+                   (Pattern,
+                    Start,
+                    Separators (Pattern, Start, Stop).Atom,
+                    Term_Grammar,
+                    Text,
+                    First,
+                    Middle)
+                 and then
+                   Denotes
+                     (Pattern,
+                      Separators (Pattern, Start, Stop).Atom,
+                      Stop,
+                      Factor_Grammar,
+                      Text,
+                      Middle,
+                      Last))
+            else
+              Denotes
+                (Pattern, Start, Stop, Factor_Grammar, Text, First, Last)),
+         when Expr_Grammar   =>
+           (if Separators (Pattern, Start, Stop).Has_Bar
+              and then Separators (Pattern, Start, Stop).Bar >= Start
+              and then Separators (Pattern, Start, Stop).Bar < Stop
+            then
+              Denotes
+                (Pattern,
+                 Start,
+                 Separators (Pattern, Start, Stop).Bar,
+                 Expr_Grammar,
+                 Text,
+                 First,
+                 Last)
+              or else
+                Denotes
+                  (Pattern,
+                   Separators (Pattern, Start, Stop).Bar + 1,
+                   Stop,
+                   Term_Grammar,
+                   Text,
+                   First,
+                   Last)
+            else
+              Denotes
+                (Pattern, Start, Stop, Term_Grammar, Text, First, Last)));
+
+   function Pattern_Matches
+     (Pattern, Text : String; First, Last : Natural) return Boolean
+   is (Pattern_Valid (Pattern)
+       and then
+         Denotes
+           (Pattern, 0, Pattern'Length, Expr_Grammar, Text, First, Last));
+
+   procedure Lemma_Denotation
+     (Pattern     : String;
+      Nodes       : Tree;
+      Id          : Live_Node;
+      Start, Stop : Natural;
+      Level       : Grammar_Level;
+      Text        : String;
+      First, Last : Natural)
+   with
+     Ghost              => Static,
+     Pre                =>
+       Tree_Valid (Nodes)
+       and then Start <= Stop
+       and then Stop <= Pattern'Length
+       and then First <= Last
+       and then Last <= Text'Length
+       and then Grammar (Pattern, Nodes, Id, Start, Stop, Level),
+     Post               =>
+       Matches (Nodes, Id, Text, First, Last)
+       = Denotes (Pattern, Start, Stop, Level, Text, First, Last),
+     Subprogram_Variant =>
+       (Decreases => Id,
+        Decreases => Stop - Start,
+        Decreases => Level,
+        Decreases => Natural'(Max_Repetition + 1),
+        Decreases => Natural'(Max_Repetition + 1),
+        Decreases => Last - First);
+
+   procedure Lemma_Repeat_Denotation
+     (Pattern                : String;
+      Nodes                  : Tree;
+      Id                     : Live_Node;
+      Start, Stop            : Natural;
+      Text                   : String;
+      First, Last, Low, High : Natural;
+      Unlimited              : Boolean)
+   with
+     Ghost              => Static,
+     Pre                =>
+       Tree_Valid (Nodes)
+       and then Nodes (Id).Kind = Repeat_Node
+       and then Start <= Stop
+       and then Stop <= Pattern'Length
+       and then First <= Last
+       and then Last <= Text'Length
+       and then Low <= Max_Repetition
+       and then High <= Max_Repetition
+       and then (Unlimited or else Low <= High)
+       and then
+         Grammar (Pattern, Nodes, Nodes (Id).Left, Start, Stop, Atom_Grammar),
+     Post               =>
+       Repeated_Matches (Nodes, Id, Text, First, Last, Low, High, Unlimited)
+       = Repeat_Denotes
+           (Pattern, Start, Stop, Text, First, Last, Low, High, Unlimited),
+     Subprogram_Variant =>
+       (Decreases => Id,
+        Decreases => Stop - Start,
+        Decreases => Grammar_Level'(Factor_Grammar),
+        Decreases => Low,
+        Decreases => High,
+        Decreases => Last - First)
+   is
+   begin
+      if Low > 0 then
+         for Middle in First .. Last loop
+            Lemma_Denotation
+              (Pattern,
+               Nodes,
+               Nodes (Id).Left,
+               Start,
+               Stop,
+               Atom_Grammar,
+               Text,
+               First,
+               Middle);
+            Lemma_Repeat_Denotation
+              (Pattern,
+               Nodes,
+               Id,
+               Start,
+               Stop,
+               Text,
+               Middle,
+               Last,
+               Low - 1,
+               (if Unlimited then High else High - 1),
+               Unlimited);
+            pragma
+              Loop_Invariant
+                (for all K in First .. Middle =>
+                   Matches (Nodes, Nodes (Id).Left, Text, First, K)
+                   = Denotes
+                       (Pattern, Start, Stop, Atom_Grammar, Text, First, K)
+                   and then
+                     Repeated_Matches
+                       (Nodes,
+                        Id,
+                        Text,
+                        K,
+                        Last,
+                        Low - 1,
+                        (if Unlimited then High else High - 1),
+                        Unlimited)
+                     = Repeat_Denotes
+                         (Pattern,
+                          Start,
+                          Stop,
+                          Text,
+                          K,
+                          Last,
+                          Low - 1,
+                          (if Unlimited then High else High - 1),
+                          Unlimited));
+         end loop;
+      elsif First = Last then
+         null;
+      elsif Unlimited then
+         for Middle in First + 1 .. Last loop
+            Lemma_Denotation
+              (Pattern,
+               Nodes,
+               Nodes (Id).Left,
+               Start,
+               Stop,
+               Atom_Grammar,
+               Text,
+               First,
+               Middle);
+            Lemma_Repeat_Denotation
+              (Pattern,
+               Nodes,
+               Id,
+               Start,
+               Stop,
+               Text,
+               Middle,
+               Last,
+               0,
+               High,
+               True);
+            pragma
+              Loop_Invariant
+                (for all K in First + 1 .. Middle =>
+                   Matches (Nodes, Nodes (Id).Left, Text, First, K)
+                   = Denotes
+                       (Pattern, Start, Stop, Atom_Grammar, Text, First, K)
+                   and then
+                     Repeated_Matches (Nodes, Id, Text, K, Last, 0, High, True)
+                     = Repeat_Denotes
+                         (Pattern, Start, Stop, Text, K, Last, 0, High, True));
+         end loop;
+      elsif High > 0 then
+         for Middle in First .. Last loop
+            Lemma_Denotation
+              (Pattern,
+               Nodes,
+               Nodes (Id).Left,
+               Start,
+               Stop,
+               Atom_Grammar,
+               Text,
+               First,
+               Middle);
+            Lemma_Repeat_Denotation
+              (Pattern,
+               Nodes,
+               Id,
+               Start,
+               Stop,
+               Text,
+               Middle,
+               Last,
+               0,
+               High - 1,
+               False);
+            pragma
+              Loop_Invariant
+                (for all K in First .. Middle =>
+                   Matches (Nodes, Nodes (Id).Left, Text, First, K)
+                   = Denotes
+                       (Pattern, Start, Stop, Atom_Grammar, Text, First, K)
+                   and then
+                     Repeated_Matches
+                       (Nodes, Id, Text, K, Last, 0, High - 1, False)
+                     = Repeat_Denotes
+                         (Pattern,
+                          Start,
+                          Stop,
+                          Text,
+                          K,
+                          Last,
+                          0,
+                          High - 1,
+                          False));
+         end loop;
+      end if;
+   end Lemma_Repeat_Denotation;
+
+   procedure Lemma_Denotation
+     (Pattern     : String;
+      Nodes       : Tree;
+      Id          : Live_Node;
+      Start, Stop : Natural;
+      Level       : Grammar_Level;
+      Text        : String;
+      First, Last : Natural)
+   is
+      S : constant Walk_State := (Cursor => Start, others => <>);
+      M : Walk_State;
+   begin
+      Lemma_Grammar_Walk (Pattern, Nodes, Id, Start, Stop, Level, S);
+      case Level is
+         when Atom_Grammar   =>
+            if not Leaf_Syntax (Pattern, Start, Stop, Nodes (Id)) then
+               Lemma_Denotation
+                 (Pattern,
+                  Nodes,
+                  Id,
+                  Start + 1,
+                  Stop - 1,
+                  Expr_Grammar,
+                  Text,
+                  First,
+                  Last);
+            end if;
+            pragma
+              Assert
+                (Matches (Nodes, Id, Text, First, Last)
+                 = Denotes (Pattern, Start, Stop, Level, Text, First, Last));
+
+         when Factor_Grammar =>
+            if Grammar (Pattern, Nodes, Id, Start, Stop, Atom_Grammar) then
+               Lemma_Grammar_Walk
+                 (Pattern, Nodes, Id, Start, Stop, Atom_Grammar, S);
+               Lemma_Denotation
+                 (Pattern,
+                  Nodes,
+                  Id,
+                  Start,
+                  Stop,
+                  Atom_Grammar,
+                  Text,
+                  First,
+                  Last);
+            else
+               for Cut in Start + 1 .. Stop - 1 loop
+                  if Grammar
+                       (Pattern,
+                        Nodes,
+                        Nodes (Id).Left,
+                        Start,
+                        Cut,
+                        Atom_Grammar)
+                    and then Quantifier_Syntax (Pattern, Cut, Stop, Nodes (Id))
+                  then
+                     Lemma_Grammar_Walk
+                       (Pattern,
+                        Nodes,
+                        Nodes (Id).Left,
+                        Start,
+                        Cut,
+                        Atom_Grammar,
+                        S);
+                     Lemma_Walk_Join (Pattern, Cut, Stop, S);
+                     pragma
+                       Assert
+                         (Separators (Pattern, Start, Stop).Has_Quant
+                          and then
+                            Separators (Pattern, Start, Stop).Quant = Cut);
+                     Lemma_Repeat_Denotation
+                       (Pattern,
+                        Nodes,
+                        Id,
+                        Start,
+                        Cut,
+                        Text,
+                        First,
+                        Last,
+                        Nodes (Id).Low,
+                        Nodes (Id).High,
+                        Nodes (Id).Unlimited);
+                     pragma
+                       Assert
+                         (Matches (Nodes, Id, Text, First, Last)
+                          = Denotes
+                              (Pattern,
+                               Start,
+                               Stop,
+                               Level,
+                               Text,
+                               First,
+                               Last));
+                     return;
+                  end if;
+                  pragma
+                    Loop_Invariant
+                      (for all K in Start + 1 .. Cut =>
+                         not (Grammar
+                                (Pattern,
+                                 Nodes,
+                                 Nodes (Id).Left,
+                                 Start,
+                                 K,
+                                 Atom_Grammar)
+                              and then
+                                Quantifier_Syntax
+                                  (Pattern, K, Stop, Nodes (Id))));
+               end loop;
+            end if;
+            pragma
+              Assert
+                (Matches (Nodes, Id, Text, First, Last)
+                 = Denotes (Pattern, Start, Stop, Level, Text, First, Last));
+
+         when Term_Grammar   =>
+            if Start = Stop and then Nodes (Id).Kind = Empty_Node then
+               null;
+            elsif Grammar (Pattern, Nodes, Id, Start, Stop, Factor_Grammar)
+            then
+               Lemma_Grammar_Walk
+                 (Pattern, Nodes, Id, Start, Stop, Factor_Grammar, S);
+               Lemma_Denotation
+                 (Pattern,
+                  Nodes,
+                  Id,
+                  Start,
+                  Stop,
+                  Factor_Grammar,
+                  Text,
+                  First,
+                  Last);
+            else
+               for Cut in Start .. Stop - 1 loop
+                  if Grammar
+                       (Pattern,
+                        Nodes,
+                        Nodes (Id).Left,
+                        Start,
+                        Cut,
+                        Term_Grammar)
+                    and then
+                      Grammar
+                        (Pattern,
+                         Nodes,
+                         Nodes (Id).Right,
+                         Cut,
+                         Stop,
+                         Factor_Grammar)
+                  then
+                     Lemma_Grammar_Walk
+                       (Pattern,
+                        Nodes,
+                        Nodes (Id).Left,
+                        Start,
+                        Cut,
+                        Term_Grammar,
+                        S);
+                     M := Walk (Pattern, Cut, S);
+                     Lemma_Grammar_Walk
+                       (Pattern,
+                        Nodes,
+                        Nodes (Id).Right,
+                        Cut,
+                        Stop,
+                        Factor_Grammar,
+                        M);
+                     Lemma_Walk_Join (Pattern, Cut, Stop, S);
+                     pragma
+                       Assert
+                         (Separators (Pattern, Start, Stop).Has_Atom
+                          and then
+                            Separators (Pattern, Start, Stop).Atom = Cut);
+                     for Middle in First .. Last loop
+                        Lemma_Denotation
+                          (Pattern,
+                           Nodes,
+                           Nodes (Id).Left,
+                           Start,
+                           Cut,
+                           Term_Grammar,
+                           Text,
+                           First,
+                           Middle);
+                        Lemma_Denotation
+                          (Pattern,
+                           Nodes,
+                           Nodes (Id).Right,
+                           Cut,
+                           Stop,
+                           Factor_Grammar,
+                           Text,
+                           Middle,
+                           Last);
+                        pragma
+                          Loop_Invariant
+                            (for all K in First .. Middle =>
+                               Matches (Nodes, Nodes (Id).Left, Text, First, K)
+                               = Denotes
+                                   (Pattern,
+                                    Start,
+                                    Cut,
+                                    Term_Grammar,
+                                    Text,
+                                    First,
+                                    K)
+                               and then
+                                 Matches
+                                   (Nodes, Nodes (Id).Right, Text, K, Last)
+                                 = Denotes
+                                     (Pattern,
+                                      Cut,
+                                      Stop,
+                                      Factor_Grammar,
+                                      Text,
+                                      K,
+                                      Last));
+                     end loop;
+                     pragma
+                       Assert
+                         (Matches (Nodes, Id, Text, First, Last)
+                          = Denotes
+                              (Pattern,
+                               Start,
+                               Stop,
+                               Level,
+                               Text,
+                               First,
+                               Last));
+                     return;
+                  end if;
+                  pragma
+                    Loop_Invariant
+                      (for all K in Start .. Cut =>
+                         not (Grammar
+                                (Pattern,
+                                 Nodes,
+                                 Nodes (Id).Left,
+                                 Start,
+                                 K,
+                                 Term_Grammar)
+                              and then
+                                Grammar
+                                  (Pattern,
+                                   Nodes,
+                                   Nodes (Id).Right,
+                                   K,
+                                   Stop,
+                                   Factor_Grammar)));
+               end loop;
+            end if;
+            pragma
+              Assert
+                (Matches (Nodes, Id, Text, First, Last)
+                 = Denotes (Pattern, Start, Stop, Level, Text, First, Last));
+
+         when Expr_Grammar   =>
+            if Grammar (Pattern, Nodes, Id, Start, Stop, Term_Grammar) then
+               Lemma_Grammar_Walk
+                 (Pattern, Nodes, Id, Start, Stop, Term_Grammar, S);
+               Lemma_Denotation
+                 (Pattern,
+                  Nodes,
+                  Id,
+                  Start,
+                  Stop,
+                  Term_Grammar,
+                  Text,
+                  First,
+                  Last);
+            else
+               for Cut in Start .. Stop - 1 loop
+                  if Byte_At (Pattern, Cut) = '|'
+                    and then
+                      Grammar
+                        (Pattern,
+                         Nodes,
+                         Nodes (Id).Left,
+                         Start,
+                         Cut,
+                         Expr_Grammar)
+                    and then
+                      Grammar
+                        (Pattern,
+                         Nodes,
+                         Nodes (Id).Right,
+                         Cut + 1,
+                         Stop,
+                         Term_Grammar)
+                  then
+                     Lemma_Grammar_Walk
+                       (Pattern,
+                        Nodes,
+                        Nodes (Id).Left,
+                        Start,
+                        Cut,
+                        Expr_Grammar,
+                        S);
+                     M := Walk_Step (Pattern, Walk (Pattern, Cut, S));
+                     Lemma_Grammar_Walk
+                       (Pattern,
+                        Nodes,
+                        Nodes (Id).Right,
+                        Cut + 1,
+                        Stop,
+                        Term_Grammar,
+                        M);
+                     Lemma_Walk_Join (Pattern, Cut, Stop, S);
+                     pragma
+                       Assert
+                         (Separators (Pattern, Start, Stop).Has_Bar
+                          and then
+                            Separators (Pattern, Start, Stop).Bar = Cut);
+                     Lemma_Denotation
+                       (Pattern,
+                        Nodes,
+                        Nodes (Id).Left,
+                        Start,
+                        Cut,
+                        Expr_Grammar,
+                        Text,
+                        First,
+                        Last);
+                     Lemma_Denotation
+                       (Pattern,
+                        Nodes,
+                        Nodes (Id).Right,
+                        Cut + 1,
+                        Stop,
+                        Term_Grammar,
+                        Text,
+                        First,
+                        Last);
+                     pragma
+                       Assert
+                         (Matches (Nodes, Id, Text, First, Last)
+                          = Denotes
+                              (Pattern,
+                               Start,
+                               Stop,
+                               Level,
+                               Text,
+                               First,
+                               Last));
+                     return;
+                  end if;
+                  pragma
+                    Loop_Invariant
+                      (for all K in Start .. Cut =>
+                         not (Byte_At (Pattern, K) = '|'
+                              and then
+                                Grammar
+                                  (Pattern,
+                                   Nodes,
+                                   Nodes (Id).Left,
+                                   Start,
+                                   K,
+                                   Expr_Grammar)
+                              and then
+                                Grammar
+                                  (Pattern,
+                                   Nodes,
+                                   Nodes (Id).Right,
+                                   K + 1,
+                                   Stop,
+                                   Term_Grammar)));
+               end loop;
+            end if;
+            pragma
+              Assert
+                (Matches (Nodes, Id, Text, First, Last)
+                 = Denotes (Pattern, Start, Stop, Level, Text, First, Last));
+      end case;
+   end Lemma_Denotation;
+
+   procedure Lemma_Grammar_Matches
+     (Pattern, Text : String;
+      Nodes         : Tree;
+      Id            : Live_Node;
+      First, Last   : Natural) is
+   begin
+      Lemma_Grammar_Valid (Pattern, Nodes, Id);
+      Lemma_Denotation
+        (Pattern,
+         Nodes,
+         Id,
+         0,
+         Pattern'Length,
+         Expr_Grammar,
+         Text,
+         First,
+         Last);
+   end Lemma_Grammar_Matches;
+
+   procedure Lemma_Derivation_Independent
+     (Pattern, Text : String;
+      Left, Right   : Tree;
+      L, R          : Live_Node;
+      First, Last   : Natural) is
+   begin
+      Lemma_Grammar_Matches (Pattern, Text, Left, L, First, Last);
+      Lemma_Grammar_Matches (Pattern, Text, Right, R, First, Last);
+   end Lemma_Derivation_Independent;
+
+   procedure Lemma_Grammar_Accepts
+     (Pattern, Text : String; Nodes : Tree; Id : Live_Node; Whole : Boolean)
+   is
+      pragma
+        Annotate
+          (GNATprove, Hide_Info, "Expression_Function_Body", Pattern_Matches);
+      pragma
+        Annotate (GNATprove, Hide_Info, "Expression_Function_Body", Matches);
+   begin
+      if Whole then
+         Lemma_Grammar_Matches (Pattern, Text, Nodes, Id, 0, Text'Length);
+      else
+         for First in 0 .. Text'Length loop
+            for Last in First .. Text'Length loop
+               Lemma_Grammar_Matches (Pattern, Text, Nodes, Id, First, Last);
+               pragma
+                 Loop_Invariant
+                   (for all K in First .. Last =>
+                      Matches (Nodes, Id, Text, First, K)
+                      = Pattern_Matches (Pattern, Text, First, K));
+            end loop;
+            pragma
+              Loop_Invariant
+                (for all F in 0 .. First =>
+                   (for all L in F .. Text'Length =>
+                      Matches (Nodes, Id, Text, F, L)
+                      = Pattern_Matches (Pattern, Text, F, L)));
+         end loop;
+      end if;
+   end Lemma_Grammar_Accepts;
+
    --  Atom derivations leave a plain atom; factors may leave a repeated one;
    --  terms and expressions may also be empty. Universal continuation
    --  hypotheses let the induction compose spans without choosing a tree.
