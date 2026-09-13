@@ -1,7 +1,8 @@
 # Spark RE
 
 An allocation-free, byte-oriented Thompson NFA regex library in Ada/SPARK,
-with an ordinary Ada `spark-grep` CLI. The library has no I/O or dependencies.
+with ordinary Ada `spark-grep` and `spark-rg` CLIs. The library has no I/O or
+dependencies.
 
 ## Build and use
 
@@ -15,6 +16,7 @@ make prove                # safety, termination, NFA simulator correctness
 make format
 printf '%s\n' src/foo.adb src/bar.ads | bin/spark-grep '\.adb$'
 bin/spark-grep -n 'procedure|function' src/*.ad?
+bin/spark-rg 'procedure|function'
 ```
 
 As in `fuzzy_matcher`, `spark_re.gpr` builds the static library alone;
@@ -107,6 +109,39 @@ printed with a delimiter. Empty input has no records. Counts and filename lists
 end in newline even with `-z`. NUL/CR bytes are preserved; there is no binary-file
 heuristic. Literal mode escapes a single pattern and uses the same budgets.
 
+### Recursive search
+
+`bin/spark-rg [OPTIONS] PATTERN [PATH ...]` searches directories itself instead
+of being handed a file list, in the manner of ripgrep. `PATH` defaults to the
+current directory; a `PATH` naming a file is searched directly, and `-` is
+stdin. Directory entries are visited in sorted order, so output is reproducible.
+
+By default it honours every `.gitignore` file it passes, skips `.git`, skips
+names beginning with a dot, skips files with a NUL byte near the start, and does
+not descend through symbolic links. Filenames and record numbers are shown, as a
+recursive search reports matches from many files.
+
+- All of `spark-grep`'s flags, plus `-N` to drop record numbers, which are on
+  by default here.
+- `-g GLOB` restricts paths, repeatable; a leading `!` excludes. Globs are
+  matched against the path as it is reported.
+- `--no-ignore`, `--hidden`, `-L`/`--follow`, `--binary` each turn off one of
+  the defaults above; `--max-depth N` bounds traversal as ripgrep counts it,
+  with zero visiting nothing.
+
+Ignore handling covers nested `.gitignore` files, `!` negation, last-rule-wins
+ordering, anchoring by an interior separator, directory-only `/` rules, `**`
+segments, character classes and escaped blanks. Ignore globs are translated into
+this library's own pattern language and matched by the proved engine, so no
+second matching implementation exists to disagree with the first; only the
+translation has to be trusted. Untranslatable or oversized rules are reported on
+stderr and skipped, costing precision rather than the traversal. Global excludes,
+`core.excludesFile` and `.git/info/exclude` are not consulted; like ripgrep,
+neither is the index, so a tracked file matching an ignore rule is still
+skipped. Because a compiled program is dominated by a per-instruction byte set, glob
+rules use a much smaller storage budget than the default instance; that
+instantiation, like all CLI code, is outside the proof run.
+
 The unproved `common/spark_cli` library provides streaming byte-record framing
 with early stop and dynamically growing record storage. It is separately
 consumable; the regex kernel does not depend on it. Existing fuzzy matcher
@@ -139,7 +174,7 @@ Recursive semantic models and proof certificates use SPARK's `Static` ghost
 level. They are proved but never executed, including in contract-enabled
 builds; ordinary executable contracts remain enabled there. The generic body
 is checked through the default instance: custom instantiations need their own
-GNATprove run. CLI and shared I/O code are outside SPARK.
+GNATprove run. CLI code, shared I/O and the recursive walker are outside SPARK.
 
 `tests/test_regex.adb` exercises default invalid programs, arbitrary/high string
 bounds, empty/nullable cycles, all 256 bytes through escaped/negated classes and

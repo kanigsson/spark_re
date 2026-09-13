@@ -7,9 +7,10 @@ project Tools is
       when "release" => for Exec_Dir use "bin";
       when "checks" => for Exec_Dir use "bin/checks";
    end case;
-   for Main use ("spark_grep.adb", "test_regex.adb");
+   for Main use ("spark_grep.adb", "spark_rg.adb", "test_regex.adb");
    package Builder is
       for Executable ("spark_grep.adb") use "spark-grep";
+      for Executable ("spark_rg.adb") use "spark-rg";
    end Builder;
    package Compiler is
       for Default_Switches ("Ada") use ("-gnat2022", "-gnatwa", "-gnata", "-O2");

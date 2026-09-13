@@ -9,10 +9,12 @@ all:
 test: all
 	bin/test_regex
 	python3 tests/test_cli.py
+	python3 tests/test_rg.py
 test-contracts:
 	$(GPRBUILD) -P tools.gpr -XSPARK_RE_BUILD=checks -j$(JOBS)
 	bin/checks/test_regex
 	SPARK_GREP=bin/checks/spark-grep python3 tests/test_cli.py
+	SPARK_RG=bin/checks/spark-rg python3 tests/test_rg.py
 flow:
 	$(GNATPROVE) -P spark_re.gpr --mode=flow -j$(JOBS)
 prove:
