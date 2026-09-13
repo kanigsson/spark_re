@@ -541,6 +541,10 @@ package body Spark_Re_Trees.Parsing with SPARK_Mode is
                 <= Decimal_Value
                      (Pattern, Sep + 1, Numeral_End (Pattern, Sep + 1))))
    with Ghost => Static, Pre => First <= Pattern'Length;
+   --  Every digit span here is one that Numeral_End's postcondition already
+   --  certifies, so match that certificate rather than expanding it per byte.
+   pragma Annotate
+     (GNATprove, Hide_Info, "Expression_Function_Body", Decimal_Digits);
 
    function Quantifier_Valid (Pattern : String; First : Natural) return Boolean
    is (First < Pattern'Length

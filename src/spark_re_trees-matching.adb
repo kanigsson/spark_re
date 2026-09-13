@@ -722,7 +722,7 @@ package body Spark_Re_Trees.Matching with SPARK_Mode is
      Post => Compiled_Shape (Nodes, Id, Before, Base, Limit, Next, Entry_State) = Compiled_Shape (Nodes, Id, After, Base, Limit, Next, Entry_State),
      Subprogram_Variant =>
        (Decreases => Id, Decreases => Natural'(0), Decreases => Natural'(0),
-        Decreases => Natural'(1));
+        Decreases => Natural'(2));
 
    procedure Lemma_Copies_Frame
      (Nodes : Tree; Id : Live_Node; Before, After : Code_Array;
@@ -733,7 +733,7 @@ package body Spark_Re_Trees.Matching with SPARK_Mode is
      Post => Copies_Shape (Nodes, Id, Before, Base, Limit, Next, Entry_State, Count) = Copies_Shape (Nodes, Id, After, Base, Limit, Next, Entry_State, Count),
      Subprogram_Variant =>
        (Decreases => Id, Decreases => Natural'(1), Decreases => Count,
-        Decreases => Natural'(1));
+        Decreases => Natural'(2));
 
    procedure Lemma_Optional_Frame
      (Nodes : Tree; Id : Live_Node; Before, After : Code_Array;
@@ -744,7 +744,7 @@ package body Spark_Re_Trees.Matching with SPARK_Mode is
      Post => Optional_Shape (Nodes, Id, Before, Base, Limit, Next, Entry_State, Count) = Optional_Shape (Nodes, Id, After, Base, Limit, Next, Entry_State, Count),
      Subprogram_Variant =>
        (Decreases => Id, Decreases => Natural'(1), Decreases => Count,
-        Decreases => Natural'(1));
+        Decreases => Natural'(2));
 
    procedure Lemma_Tail_Frame
      (Nodes : Tree; Id : Live_Node; Before, After : Code_Array;
@@ -755,7 +755,7 @@ package body Spark_Re_Trees.Matching with SPARK_Mode is
      Post => Tail_Shape (Nodes, Id, Before, Base, Limit, Next, Entry_State, Count, Unlimited) = Tail_Shape (Nodes, Id, After, Base, Limit, Next, Entry_State, Count, Unlimited),
      Subprogram_Variant =>
        (Decreases => Id, Decreases => Natural'(2), Decreases => Count,
-        Decreases => Natural'(1));
+        Decreases => Natural'(2));
 
    procedure Lemma_Shape_Preserve
      (Nodes : Tree; Id : Live_Node; Before, After : Code_Array;
@@ -767,7 +767,7 @@ package body Spark_Re_Trees.Matching with SPARK_Mode is
      Post => Compiled_Shape (Nodes, Id, After, Base, Limit, Next, Entry_State),
      Subprogram_Variant =>
        (Decreases => Id, Decreases => Natural'(0), Decreases => Natural'(0),
-        Decreases => Natural'(0));
+        Decreases => Natural'(1));
 
    procedure Lemma_Copies_Preserve
      (Nodes : Tree; Id : Live_Node; Before, After : Code_Array;
@@ -779,7 +779,7 @@ package body Spark_Re_Trees.Matching with SPARK_Mode is
      Post => Copies_Shape (Nodes, Id, After, Base, Limit, Next, Entry_State, Count),
      Subprogram_Variant =>
        (Decreases => Id, Decreases => Natural'(1), Decreases => Count,
-        Decreases => Natural'(0));
+        Decreases => Natural'(1));
 
    procedure Lemma_Optional_Preserve
      (Nodes : Tree; Id : Live_Node; Before, After : Code_Array;
@@ -791,7 +791,7 @@ package body Spark_Re_Trees.Matching with SPARK_Mode is
      Post => Optional_Shape (Nodes, Id, After, Base, Limit, Next, Entry_State, Count),
      Subprogram_Variant =>
        (Decreases => Id, Decreases => Natural'(1), Decreases => Count,
-        Decreases => Natural'(0));
+        Decreases => Natural'(1));
 
    procedure Lemma_Tail_Preserve
      (Nodes : Tree; Id : Live_Node; Before, After : Code_Array;
@@ -803,7 +803,7 @@ package body Spark_Re_Trees.Matching with SPARK_Mode is
      Post => Tail_Shape (Nodes, Id, After, Base, Limit, Next, Entry_State, Count, Unlimited),
      Subprogram_Variant =>
        (Decreases => Id, Decreases => Natural'(2), Decreases => Count,
-        Decreases => Natural'(0));
+        Decreases => Natural'(1));
 
    procedure Lemma_Copies_Join
      (Nodes : Tree; Id : Live_Node; Code : Code_Array;
@@ -861,6 +861,14 @@ package body Spark_Re_Trees.Matching with SPARK_Mode is
          (Nodes, Nodes (Id).Left, Code, Cut, Limit, Middle, Entry_State, Nodes (Id).Low),
      Post => Compiled_Shape (Nodes, Id, Code, Base, Limit, Next, Entry_State)
    is
+      --  The child certificates are only carried into the repetition case,
+      --  never inspected, so their definitions are pruned here.
+      pragma Annotate
+        (GNATprove, Hide_Info, "Expression_Function_Body", Tail_Shape);
+      pragma Annotate
+        (GNATprove, Hide_Info, "Expression_Function_Body", Copies_Shape);
+      pragma Annotate
+        (GNATprove, Hide_Info, "Expression_Function_Body", Optional_Shape);
    begin
       pragma Assert (for some M in 0 .. Cut =>
         Tail_Shape
@@ -868,17 +876,47 @@ package body Spark_Re_Trees.Matching with SPARK_Mode is
            (if Nodes (Id).Unlimited then 0 else Nodes (Id).High - Nodes (Id).Low), Nodes (Id).Unlimited)
         and then Copies_Shape
           (Nodes, Nodes (Id).Left, Code, Cut, Limit, M, Entry_State, Nodes (Id).Low));
+      --  Witness the outer cut with Cut, so that folding into the repetition
+      --  certificate is a single instantiation rather than a search.
+      pragma Assert
+        (for some C in Base .. Limit =>
+           (for some M in 0 .. C =>
+              Tail_Shape
+                (Nodes, Nodes (Id).Left, Code, Base, C, Next, M,
+                 (if Nodes (Id).Unlimited then 0
+                  else Nodes (Id).High - Nodes (Id).Low),
+                 Nodes (Id).Unlimited)
+              and then Copies_Shape
+                (Nodes, Nodes (Id).Left, Code, C, Limit, M, Entry_State,
+                 Nodes (Id).Low)));
    end Lemma_Repeat_Join;
 
-   procedure Lemma_Shape_Preserve
+   --  Concatenation and repetition preservation are split out so that each
+   --  can prune the shape definitions it only carries. The leaf and
+   --  alternation cases below still need them unfolded, and information
+   --  hiding is decided per verified entity, not per branch.
+   procedure Lemma_Concat_Preserve
      (Nodes : Tree; Id : Live_Node; Before, After : Code_Array;
       Base, Limit, Next, Entry_State : State_Id)
+   with Ghost => Static,
+     Pre => Tree_Valid (Nodes) and then Base <= Limit
+       and then Nodes (Id).Kind = Concat_Node
+       and then (for all K in 1 .. Limit => (if K > Base then Before (K) = After (K)))
+       and then Compiled_Shape (Nodes, Id, Before, Base, Limit, Next, Entry_State),
+     Post => Compiled_Shape (Nodes, Id, After, Base, Limit, Next, Entry_State),
+     Subprogram_Variant =>
+       (Decreases => Id, Decreases => Natural'(0), Decreases => Natural'(0),
+        Decreases => Natural'(0))
    is
+      --  This search reasons only about the certificates' quantifier structure:
+      --  the witness comes from Reveal_Shape's postcondition and is consumed
+      --  by the frame and join lemmas' contracts. Pruning the recursive
+      --  definition keeps the nested existential from being re-instantiated
+      --  under the enclosing universal invariant.
+      pragma Annotate
+        (GNATprove, Hide_Info, "Expression_Function_Body", Compiled_Shape);
    begin
       Reveal_Shape (Nodes, Id, Before, Base, Limit, Next, Entry_State);
-      case Nodes (Id).Kind is
-         when Empty_Node | Bytes_Node | Start_Node | End_Node => null;
-         when Concat_Node =>
          for Cut in Base .. Limit loop
             if (for some M in 0 .. Cut => Compiled_Shape (Nodes, Nodes (Id).Right, Before, Base, Cut, Next, M) and then Compiled_Shape (Nodes, Nodes (Id).Left, Before, Cut, Limit, M, Entry_State)) then
             for Middle in 0 .. Cut loop
@@ -904,28 +942,33 @@ package body Spark_Re_Trees.Matching with SPARK_Mode is
                      (Nodes, Nodes (Id).Left, Before, C, Limit, M, Entry_State)));
          end loop;
          pragma Assert (False);
+   end Lemma_Concat_Preserve;
 
-         when Alt_Node =>
-            for Cut in Base .. Limit - 1 loop
-               if Compiled_Shape
-                 (Nodes, Nodes (Id).Left, Before, Base, Cut, Next, Before (Limit).Next_1)
-                 and then Compiled_Shape
-                 (Nodes, Nodes (Id).Right, Before, Cut, Limit - 1, Next, Before (Limit).Next_2)
-               then
-                  Lemma_Shape_Frame
-                    (Nodes, Nodes (Id).Left, Before, After, Base, Cut, Next, Before (Limit).Next_1);
-                  Lemma_Shape_Frame
-                    (Nodes, Nodes (Id).Right, Before, After, Cut, Limit - 1, Next, Before (Limit).Next_2);
-                  return;
-               end if;
-               pragma Loop_Invariant (for all C in Base .. Cut => not
-                 (Compiled_Shape
-                    (Nodes, Nodes (Id).Left, Before, Base, C, Next, Before (Limit).Next_1)
-                  and then Compiled_Shape
-                    (Nodes, Nodes (Id).Right, Before, C, Limit - 1, Next, Before (Limit).Next_2)));
-            end loop;
-            pragma Assert (False);
-         when Repeat_Node =>
+   procedure Lemma_Repeat_Preserve
+     (Nodes : Tree; Id : Live_Node; Before, After : Code_Array;
+      Base, Limit, Next, Entry_State : State_Id)
+   with Ghost => Static,
+     Pre => Tree_Valid (Nodes) and then Base <= Limit
+       and then Nodes (Id).Kind = Repeat_Node
+       and then (for all K in 1 .. Limit => (if K > Base then Before (K) = After (K)))
+       and then Compiled_Shape (Nodes, Id, Before, Base, Limit, Next, Entry_State),
+     Post => Compiled_Shape (Nodes, Id, After, Base, Limit, Next, Entry_State),
+     Subprogram_Variant =>
+       (Decreases => Id, Decreases => Natural'(0), Decreases => Natural'(0),
+        Decreases => Natural'(0))
+   is
+      --  As for concatenation: the repetition certificates are carried, never
+      --  unfolded, so their definitions are pruned here.
+      pragma Annotate
+        (GNATprove, Hide_Info, "Expression_Function_Body", Compiled_Shape);
+      pragma Annotate
+        (GNATprove, Hide_Info, "Expression_Function_Body", Copies_Shape);
+      pragma Annotate
+        (GNATprove, Hide_Info, "Expression_Function_Body", Optional_Shape);
+      pragma Annotate
+        (GNATprove, Hide_Info, "Expression_Function_Body", Tail_Shape);
+   begin
+      Reveal_Shape (Nodes, Id, Before, Base, Limit, Next, Entry_State);
          for Cut in Base .. Limit loop
             if (for some M in 0 .. Cut => Tail_Shape (Nodes, Nodes (Id).Left, Before, Base, Cut, Next, M, (if Nodes (Id).Unlimited then 0 else Nodes (Id).High - Nodes (Id).Low), Nodes (Id).Unlimited) and then Copies_Shape (Nodes, Nodes (Id).Left, Before, Cut, Limit, M, Entry_State, Nodes (Id).Low)) then
             for Middle in 0 .. Cut loop
@@ -952,6 +995,66 @@ package body Spark_Re_Trees.Matching with SPARK_Mode is
                       Entry_State, Nodes (Id).Low)));
          end loop;
          pragma Assert (False);
+   end Lemma_Repeat_Preserve;
+
+   --  Alternation is split out for symmetry with the other compound cases:
+   --  Lemma_Shape_Preserve is then a plain dispatch whose postcondition is
+   --  each callee's, or a leaf certificate that depends only on the preserved
+   --  instruction at Limit.
+   procedure Lemma_Alt_Preserve
+     (Nodes : Tree; Id : Live_Node; Before, After : Code_Array;
+      Base, Limit, Next, Entry_State : State_Id)
+   with Ghost => Static,
+     Pre => Tree_Valid (Nodes) and then Base <= Limit
+       and then Nodes (Id).Kind = Alt_Node
+       and then (for all K in 1 .. Limit => (if K > Base then Before (K) = After (K)))
+       and then Compiled_Shape (Nodes, Id, Before, Base, Limit, Next, Entry_State),
+     Post => Compiled_Shape (Nodes, Id, After, Base, Limit, Next, Entry_State),
+     Subprogram_Variant =>
+       (Decreases => Id, Decreases => Natural'(0), Decreases => Natural'(0),
+        Decreases => Natural'(0))
+   is
+   begin
+      Reveal_Shape (Nodes, Id, Before, Base, Limit, Next, Entry_State);
+            for Cut in Base .. Limit - 1 loop
+               if Compiled_Shape
+                 (Nodes, Nodes (Id).Left, Before, Base, Cut, Next, Before (Limit).Next_1)
+                 and then Compiled_Shape
+                 (Nodes, Nodes (Id).Right, Before, Cut, Limit - 1, Next, Before (Limit).Next_2)
+               then
+                  Lemma_Shape_Frame
+                    (Nodes, Nodes (Id).Left, Before, After, Base, Cut, Next, Before (Limit).Next_1);
+                  Lemma_Shape_Frame
+                    (Nodes, Nodes (Id).Right, Before, After, Cut, Limit - 1, Next, Before (Limit).Next_2);
+                  return;
+               end if;
+               pragma Loop_Invariant (for all C in Base .. Cut => not
+                 (Compiled_Shape
+                    (Nodes, Nodes (Id).Left, Before, Base, C, Next, Before (Limit).Next_1)
+                  and then Compiled_Shape
+                    (Nodes, Nodes (Id).Right, Before, C, Limit - 1, Next, Before (Limit).Next_2)));
+            end loop;
+            pragma Assert (False);
+   end Lemma_Alt_Preserve;
+
+   procedure Lemma_Shape_Preserve
+     (Nodes : Tree; Id : Live_Node; Before, After : Code_Array;
+      Base, Limit, Next, Entry_State : State_Id)
+   is
+   begin
+      Reveal_Shape (Nodes, Id, Before, Base, Limit, Next, Entry_State);
+      case Nodes (Id).Kind is
+         when Empty_Node | Bytes_Node | Start_Node | End_Node => null;
+         when Concat_Node =>
+            Lemma_Concat_Preserve
+              (Nodes, Id, Before, After, Base, Limit, Next, Entry_State);
+
+         when Alt_Node =>
+            Lemma_Alt_Preserve
+              (Nodes, Id, Before, After, Base, Limit, Next, Entry_State);
+         when Repeat_Node =>
+            Lemma_Repeat_Preserve
+              (Nodes, Id, Before, After, Base, Limit, Next, Entry_State);
 
       end case;
    end Lemma_Shape_Preserve;
@@ -1199,6 +1302,19 @@ package body Spark_Re_Trees.Matching with SPARK_Mode is
                    Nodes (Id).Low),
             when others      => False)
    is
+      --  These searches reason only about the shape certificates' quantifier
+      --  structure: the witnesses come from Reveal_Shape's postcondition and
+      --  are consumed by the frame and join lemmas' contracts. Pruning the
+      --  recursive definitions keeps the nested existentials from being
+      --  re-instantiated under each enclosing universal.
+      pragma Annotate
+        (GNATprove, Hide_Info, "Expression_Function_Body", Compiled_Shape);
+      pragma Annotate
+        (GNATprove, Hide_Info, "Expression_Function_Body", Copies_Shape);
+      pragma Annotate
+        (GNATprove, Hide_Info, "Expression_Function_Body", Optional_Shape);
+      pragma Annotate
+        (GNATprove, Hide_Info, "Expression_Function_Body", Tail_Shape);
    begin
       Reveal_Shape (Nodes, Id, Code, Base, Limit, Next, Entry_State);
       case Nodes (Id).Kind is
@@ -1468,6 +1584,19 @@ package body Spark_Re_Trees.Matching with SPARK_Mode is
        and then
          Compiled_Shape (Nodes, Id, Code, Cut, Limit, Middle, Entry_State)
    is
+      --  These searches reason only about the shape certificates' quantifier
+      --  structure: the witnesses come from Reveal_Shape's postcondition and
+      --  are consumed by the frame and join lemmas' contracts. Pruning the
+      --  recursive definitions keeps the nested existentials from being
+      --  re-instantiated under each enclosing universal.
+      pragma Annotate
+        (GNATprove, Hide_Info, "Expression_Function_Body", Compiled_Shape);
+      pragma Annotate
+        (GNATprove, Hide_Info, "Expression_Function_Body", Copies_Shape);
+      pragma Annotate
+        (GNATprove, Hide_Info, "Expression_Function_Body", Optional_Shape);
+      pragma Annotate
+        (GNATprove, Hide_Info, "Expression_Function_Body", Tail_Shape);
    begin
       Reveal_Copies (Nodes, Id, Code, Base, Limit, Next, Entry_State, Count);
       for C in Base .. Limit loop

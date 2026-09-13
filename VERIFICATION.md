@@ -418,3 +418,58 @@ frame proofs; GNATprove reports no warnings, assumptions or proof suppressions.
 
 Parser completeness, structural syntax rejection and a pattern-only denotation
 remain open, and now live entirely inside `Spark_Re_Trees.Parsing`.
+
+## Proof-context pruning — 2026-09-13
+
+This pass supersedes the prover-list change recorded above. The five marginal
+goals are now closed by pruning proof context instead, so **the prover list
+returns to `cvc5,z3`**; level, timeout and job count are unchanged throughout.
+A cleaned, forced run (`gnatprove --clean`, then `-f`) proves **all 2,913
+checks**, with zero justified and zero unproved:
+
+| Category | Checks |
+| --- | ---: |
+| Data dependencies | 17 |
+| Initialization | 104 |
+| Runtime checks | 1,400 |
+| Assertions | 234 |
+| Functional contracts | 907 |
+| Termination | 251 |
+
+Alt-Ergo appears nowhere in the prover breakdown.
+
+The witness searches over compiled code intervals carry the shape certificates
+without ever inspecting them; only their quantifier structure matters, and the
+witnesses come from `Reveal_Shape`'s postcondition and the frame and join
+lemmas' contracts. Hiding the recursive `Compiled_Shape`, `Copies_Shape`,
+`Optional_Shape` and `Tail_Shape` bodies in those entities keeps the nested
+existentials from being re-instantiated under each enclosing universal
+invariant. Because hiding is decided per verified entity, `Lemma_Shape_Preserve`
+was split into `Lemma_Concat_Preserve`, `Lemma_Alt_Preserve` and
+`Lemma_Repeat_Preserve` over a dispatch: the two searches prune, while the leaf
+and alternation cases still unfold their certificates. The mutual-recursion
+variants were renumbered to give the three case lemmas a slot below the preserve
+family, which in turn moved below the frame family; no variant component changed
+meaning. `Lemma_Repeat_Join` prunes the child certificates and names the outer
+cut witness explicitly. `Bounds_Valid` hides `Decimal_Digits`, whose digit spans
+`Numeral_End`'s postcondition already certifies. `Numeral_End` was already
+hidden by default before this pass.
+
+No contract was weakened and nothing was assumed: these annotations remove
+definitions from the proof context, they do not add facts to it. The reported
+total rises from 2,879 to 2,913 because the three case lemmas carry their own
+contracts.
+
+Proof is also substantially faster. On a warm cache `make prove` takes 48
+seconds, against 80 seconds for the split with Alt-Ergo and 99 seconds for the
+single-unit baseline. A fully cold, cleaned, forced run takes 3 minutes 10.
+
+An earlier warm run of this configuration appeared to prove everything while
+two checks in fact depended on cached Alt-Ergo results; the figures above come
+from a cleaned forced run, which is how this configuration should be checked.
+
+`python3 scripts/validate.py` passed release tests, executable-contract tests,
+flow analysis and proof. Both test modes passed the Ada cases and **1,198
+differential/CLI checks over 290 patterns**. The receipt and command logs are in
+`validation/20260913T024145Z/`; source hashes there record the code at that
+pass, and this section was written afterward.

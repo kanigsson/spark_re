@@ -372,10 +372,19 @@ binaries execute them. Ordinary executable contracts remain enabled in the
 checks build. There are no assumptions, imported proof axioms, proof
 suppressions, or library bodies excluded from SPARK.
 
-Proof uses cvc5, Z3 and Alt-Ergo. Alt-Ergo discharges only a handful of
-quantified witness-search goals in the compiler frame lemmas, which cvc5 and
-Z3 reach the time limit on once those lemmas are analyzed as their own unit;
-it is part of the SPARK distribution and introduces no axioms of its own.
+Proof uses cvc5 and Z3.
+
+Several entities prune their own proof context with `Hide_Info` on expression
+function bodies. `Numeral_End` is hidden by default and disclosed only by its
+step lemma. In addition, the witness searches over compiled code intervals
+carry the shape certificates without inspecting them: `Lemma_Concat_Preserve`,
+`Lemma_Repeat_Preserve`, `Shape_Parts`, `Copies_Parts` and `Lemma_Repeat_Join`
+hide the recursive `Compiled_Shape`, `Copies_Shape`, `Optional_Shape` and
+`Tail_Shape` definitions, and `Bounds_Valid` hides `Decimal_Digits`, whose
+digit spans are already certified by `Numeral_End`'s postcondition. Hiding is
+decided per verified entity, so `Lemma_Shape_Preserve` is a dispatch over three
+case lemmas plus the leaf case, which is the one place that still unfolds a
+certificate. These annotations prune context; they assert nothing.
 
 The evidence covers the default `Regex` instantiation. Other capacities need
 their own GNATprove run. Stack capacity and a formal machine-cost model are
