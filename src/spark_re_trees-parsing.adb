@@ -1,4 +1,6 @@
-package body Spark_Re_Trees.Parsing with SPARK_Mode is
+package body Spark_Re_Trees.Parsing
+  with SPARK_Mode
+is
 
    type Frame is record
       Expr, Term, Atom : Node_Id := 0;
@@ -543,8 +545,9 @@ package body Spark_Re_Trees.Parsing with SPARK_Mode is
    with Ghost => Static, Pre => First <= Pattern'Length;
    --  Every digit span here is one that Numeral_End's postcondition already
    --  certifies, so match that certificate rather than expanding it per byte.
-   pragma Annotate
-     (GNATprove, Hide_Info, "Expression_Function_Body", Decimal_Digits);
+   pragma
+     Annotate
+       (GNATprove, Hide_Info, "Expression_Function_Body", Decimal_Digits);
 
    function Quantifier_Valid (Pattern : String; First : Natural) return Boolean
    is (First < Pattern'Length
@@ -885,6 +888,308 @@ package body Spark_Re_Trees.Parsing with SPARK_Mode is
                         Bar + 1,
                         Last,
                         Term_Grammar))));
+
+   --  Continuations consume maximal lexical tokens and track only unmatched
+   --  parentheses and whether one postfix quantifier may follow. They do not
+   --  inspect trees, parser frames, capacities, or executable scanner results.
+   type Pending_Kind is (No_Atom, Plain_Atom, Repeated_Atom);
+
+   function Pending (F : Frame) return Pending_Kind
+   is (if F.Atom = 0
+       then No_Atom
+       elsif F.Quantified
+       then Repeated_Atom
+       else Plain_Atom)
+   with Ghost => Static;
+
+   function Leaf_End (Pattern : String; First : Natural) return Natural
+   is (case Byte_At (Pattern, First) is
+         when '['    =>
+           Class_Tail_End (Pattern, Class_Body (Pattern, First), True),
+         when '\'    => First + 2,
+         when others => First + 1)
+   with
+     Ghost => Static,
+     Pre   => First <= Pattern'Length and then Leaf_Valid (Pattern, First),
+     Post  => Leaf_End'Result in First + 1 .. Pattern'Length;
+
+   function Syntax_Continuation
+     (Pattern : String; Pos, Depth : Natural; Pending : Pending_Kind)
+      return Boolean
+   is (if Pos = Pattern'Length
+       then Depth = 0
+       else
+         (case Byte_At (Pattern, Pos) is
+            when '('                   =>
+              Syntax_Continuation (Pattern, Pos + 1, Depth + 1, No_Atom),
+            when ')'                   =>
+              Depth > 0
+              and then
+                Syntax_Continuation (Pattern, Pos + 1, Depth - 1, Plain_Atom),
+            when '|'                   =>
+              Syntax_Continuation (Pattern, Pos + 1, Depth, No_Atom),
+            when '*' | '+' | '?' | '{' =>
+              Pending = Plain_Atom
+              and then Quantifier_Valid (Pattern, Pos)
+              and then
+                Syntax_Continuation
+                  (Pattern,
+                   Quantifier_Model (Pattern, Pos).Last,
+                   Depth,
+                   Repeated_Atom),
+            when '}' | ']'             => False,
+            when others                =>
+              Leaf_Valid (Pattern, Pos)
+              and then
+                Syntax_Continuation
+                  (Pattern, Leaf_End (Pattern, Pos), Depth, Plain_Atom)))
+   with
+     Ghost              => Static,
+     Pre                => Depth <= Pos and Pos <= Pattern'Length,
+     Subprogram_Variant => (Decreases => Pattern'Length - Pos);
+
+   function Pattern_Valid (Pattern : String) return Boolean
+   is (Syntax_Continuation (Pattern, 0, 0, No_Atom));
+
+   --  Atom derivations leave a plain atom; factors may leave a repeated one;
+   --  terms and expressions may also be empty. Universal continuation
+   --  hypotheses let the induction compose spans without choosing a tree.
+   function Can_Follow
+     (Pattern : String; Pos, Depth : Natural; Level : Grammar_Level)
+      return Boolean
+   is (Syntax_Continuation (Pattern, Pos, Depth, Plain_Atom)
+       and then
+         (if Level /= Atom_Grammar
+          then Syntax_Continuation (Pattern, Pos, Depth, Repeated_Atom))
+       and then
+         (if Level in Term_Grammar | Expr_Grammar
+          then Syntax_Continuation (Pattern, Pos, Depth, No_Atom)))
+   with Ghost => Static, Pre => Depth <= Pos and Pos <= Pattern'Length;
+
+   procedure Lemma_Grammar_Continuation
+     (Pattern            : String;
+      Nodes              : Tree;
+      Id                 : Live_Node;
+      First, Last, Depth : Natural;
+      Level              : Grammar_Level)
+   with
+     Ghost              => Static,
+     Pre                =>
+       Tree_Valid (Nodes)
+       and then Depth <= First
+       and then First <= Last
+       and then Last <= Pattern'Length
+       and then Grammar (Pattern, Nodes, Id, First, Last, Level)
+       and then Can_Follow (Pattern, Last, Depth, Level),
+     Post               =>
+       (for all Pending in Pending_Kind =>
+          Syntax_Continuation (Pattern, First, Depth, Pending)),
+     Subprogram_Variant =>
+       (Decreases => Id, Decreases => Last - First, Decreases => Level)
+   is
+   begin
+      case Level is
+         when Atom_Grammar   =>
+            if not Leaf_Syntax (Pattern, First, Last, Nodes (Id)) then
+               pragma
+                 Assert
+                   (Can_Follow (Pattern, Last - 1, Depth + 1, Expr_Grammar));
+               Lemma_Grammar_Continuation
+                 (Pattern,
+                  Nodes,
+                  Id,
+                  First + 1,
+                  Last - 1,
+                  Depth + 1,
+                  Expr_Grammar);
+            else
+               pragma Assert (Last = Leaf_End (Pattern, First));
+            end if;
+
+         when Factor_Grammar =>
+            if Grammar (Pattern, Nodes, Id, First, Last, Atom_Grammar) then
+               Lemma_Grammar_Continuation
+                 (Pattern, Nodes, Id, First, Last, Depth, Atom_Grammar);
+            else
+               for Middle in First + 1 .. Last - 1 loop
+                  if Grammar
+                       (Pattern,
+                        Nodes,
+                        Nodes (Id).Left,
+                        First,
+                        Middle,
+                        Atom_Grammar)
+                    and then
+                      Quantifier_Syntax (Pattern, Middle, Last, Nodes (Id))
+                  then
+                     pragma
+                       Assert
+                         (Can_Follow (Pattern, Middle, Depth, Atom_Grammar));
+                     Lemma_Grammar_Continuation
+                       (Pattern,
+                        Nodes,
+                        Nodes (Id).Left,
+                        First,
+                        Middle,
+                        Depth,
+                        Atom_Grammar);
+                     return;
+                  end if;
+                  pragma
+                    Loop_Invariant
+                      (for all K in First + 1 .. Middle =>
+                         not (Grammar
+                                (Pattern,
+                                 Nodes,
+                                 Nodes (Id).Left,
+                                 First,
+                                 K,
+                                 Atom_Grammar)
+                              and then
+                                Quantifier_Syntax
+                                  (Pattern, K, Last, Nodes (Id))));
+               end loop;
+            end if;
+
+         when Term_Grammar   =>
+            if First = Last and then Nodes (Id).Kind = Empty_Node then
+               null;
+            elsif Grammar (Pattern, Nodes, Id, First, Last, Factor_Grammar)
+            then
+               Lemma_Grammar_Continuation
+                 (Pattern, Nodes, Id, First, Last, Depth, Factor_Grammar);
+            else
+               for Middle in First .. Last - 1 loop
+                  if Grammar
+                       (Pattern,
+                        Nodes,
+                        Nodes (Id).Left,
+                        First,
+                        Middle,
+                        Term_Grammar)
+                    and then
+                      Grammar
+                        (Pattern,
+                         Nodes,
+                         Nodes (Id).Right,
+                         Middle,
+                         Last,
+                         Factor_Grammar)
+                  then
+                     Lemma_Grammar_Continuation
+                       (Pattern,
+                        Nodes,
+                        Nodes (Id).Right,
+                        Middle,
+                        Last,
+                        Depth,
+                        Factor_Grammar);
+                     Lemma_Grammar_Continuation
+                       (Pattern,
+                        Nodes,
+                        Nodes (Id).Left,
+                        First,
+                        Middle,
+                        Depth,
+                        Term_Grammar);
+                     return;
+                  end if;
+                  pragma
+                    Loop_Invariant
+                      (for all K in First .. Middle =>
+                         not (Grammar
+                                (Pattern,
+                                 Nodes,
+                                 Nodes (Id).Left,
+                                 First,
+                                 K,
+                                 Term_Grammar)
+                              and then
+                                Grammar
+                                  (Pattern,
+                                   Nodes,
+                                   Nodes (Id).Right,
+                                   K,
+                                   Last,
+                                   Factor_Grammar)));
+               end loop;
+            end if;
+
+         when Expr_Grammar   =>
+            if Grammar (Pattern, Nodes, Id, First, Last, Term_Grammar) then
+               Lemma_Grammar_Continuation
+                 (Pattern, Nodes, Id, First, Last, Depth, Term_Grammar);
+            else
+               for Bar in First .. Last - 1 loop
+                  if Byte_At (Pattern, Bar) = '|'
+                    and then
+                      Grammar
+                        (Pattern,
+                         Nodes,
+                         Nodes (Id).Left,
+                         First,
+                         Bar,
+                         Expr_Grammar)
+                    and then
+                      Grammar
+                        (Pattern,
+                         Nodes,
+                         Nodes (Id).Right,
+                         Bar + 1,
+                         Last,
+                         Term_Grammar)
+                  then
+                     Lemma_Grammar_Continuation
+                       (Pattern,
+                        Nodes,
+                        Nodes (Id).Right,
+                        Bar + 1,
+                        Last,
+                        Depth,
+                        Term_Grammar);
+                     pragma
+                       Assert (Can_Follow (Pattern, Bar, Depth, Expr_Grammar));
+                     Lemma_Grammar_Continuation
+                       (Pattern,
+                        Nodes,
+                        Nodes (Id).Left,
+                        First,
+                        Bar,
+                        Depth,
+                        Expr_Grammar);
+                     return;
+                  end if;
+                  pragma
+                    Loop_Invariant
+                      (for all K in First .. Bar =>
+                         not (Byte_At (Pattern, K) = '|'
+                              and then
+                                Grammar
+                                  (Pattern,
+                                   Nodes,
+                                   Nodes (Id).Left,
+                                   First,
+                                   K,
+                                   Expr_Grammar)
+                              and then
+                                Grammar
+                                  (Pattern,
+                                   Nodes,
+                                   Nodes (Id).Right,
+                                   K + 1,
+                                   Last,
+                                   Term_Grammar)));
+               end loop;
+            end if;
+      end case;
+   end Lemma_Grammar_Continuation;
+
+   procedure Lemma_Grammar_Valid
+     (Pattern : String; Nodes : Tree; Id : Live_Node) is
+   begin
+      Lemma_Grammar_Continuation
+        (Pattern, Nodes, Id, 0, Pattern'Length, 0, Expr_Grammar);
+   end Lemma_Grammar_Valid;
 
    procedure Lemma_Grammar_Frame
      (Pattern       : String;
@@ -1313,7 +1618,10 @@ package body Spark_Re_Trees.Parsing with SPARK_Mode is
                    then Id = Used and Used = Used'Old + 1 and Nodes (Id) = N)
                 and then
                   (for all K in 1 .. Used'Old => Nodes (K) = Nodes'Old (K))
-                and then (if Status'Old /= Success then Status = Status'Old));
+                and then (if Status'Old /= Success then Status = Status'Old)
+                and then
+                  (if Status'Old = Success
+                   then Status in Success | Node_Limit));
          Before : constant Tree := Nodes
          with Ghost => Static;
          Limit  : constant Node_Id := Used
@@ -1348,6 +1656,8 @@ package body Spark_Re_Trees.Parsing with SPARK_Mode is
                 and then Frames_Valid
                 and then Used >= Used'Old
                 and then (if Status'Old /= Success then Status = Status'Old)
+                and then
+                  (if Status'Old = Success then Status in Success | Node_Limit)
                 and then Frames (Top).Atom = 0
                 and then not Frames (Top).Quantified
                 and then Frames (Top).Expr = Frames'Old (Top).Expr
@@ -1408,6 +1718,8 @@ package body Spark_Re_Trees.Parsing with SPARK_Mode is
                 and then Frames_Valid
                 and then Used >= Used'Old
                 and then (if Status'Old /= Success then Status = Status'Old)
+                and then
+                  (if Status'Old = Success then Status in Success | Node_Limit)
                 and then Spans (Top).First = Spans'Old (Top).First
                 and then
                   (for all F in Live_Node =>
@@ -1479,6 +1791,24 @@ package body Spark_Re_Trees.Parsing with SPARK_Mode is
          pragma Loop_Invariant (Pos in Pos'Loop_Entry .. Pattern'Length);
          pragma Loop_Invariant (Static => Tree_Valid (Nodes) and Frames_Valid);
          pragma Loop_Invariant (Static => Cursor = Pos);
+         pragma Loop_Invariant (Static => Top - 1 <= Cursor);
+         pragma
+           Loop_Invariant
+             (Static => Status in Success | Syntax_Error | Node_Limit);
+         pragma
+           Loop_Invariant
+             (Static =>
+                (if Pattern_Valid (Pattern)
+                 then
+                   Status /= Syntax_Error
+                   and then
+                     (if Status = Success
+                      then
+                        Syntax_Continuation
+                          (Pattern,
+                           Cursor,
+                           Top - 1,
+                           Pending (Frames (Top))))));
          pragma
            Loop_Invariant
              (Static => (if Status = Success then Frames_Syntax (Nodes)));
@@ -1609,6 +1939,21 @@ package body Spark_Re_Trees.Parsing with SPARK_Mode is
 
             end case;
             Cursor := Pos;
+            pragma Assert (Static => Top - 1 <= Cursor);
+            pragma
+              Assert
+                (Static =>
+                   (if Pattern_Valid (Pattern)
+                    then
+                      Status /= Syntax_Error
+                      and then
+                        (if Status = Success
+                         then
+                           Syntax_Continuation
+                             (Pattern,
+                              Cursor,
+                              Top - 1,
+                              Pending (Frames (Top))))));
             pragma
               Assert
                 (Static => (if Status = Success then Frames_Syntax (Nodes)));
@@ -1629,6 +1974,15 @@ package body Spark_Re_Trees.Parsing with SPARK_Mode is
       end if;
    end Parse;
 
-   --  A fragment can leave its newly allocated interval only at Next.
-   --  It contains neither an accepting instruction nor a dead instruction.
+   procedure Parse_Complete
+     (Pattern : String;
+      Witness : Tree;
+      Id      : Live_Node;
+      Nodes   : out Tree;
+      Root    : out Node_Id;
+      Status  : out Compile_Status) is
+   begin
+      Lemma_Grammar_Valid (Pattern, Witness, Id);
+      Parse (Pattern, Nodes, Root, Status);
+   end Parse_Complete;
 end Spark_Re_Trees.Parsing;

@@ -128,9 +128,11 @@ preserves the independent tree-span semantics for every constructor, including
 nullable repetition and absolute anchors. Lexical scanners prove acceptance,
 rejection and exact token contents. Successful parsing now proves a derivation
 in an independent expression grammar, and the composed theorem connects that
-derived tree to executable matching. Parser completeness, structural syntax
-rejection, and a pattern-only denotation independent of the chosen derivation
-remain open. [PROOF.md](PROOF.md) states the theorems and remaining obligations.
+derived tree to executable matching. Parser completeness also proves that a
+pattern with a grammar derivation cannot produce a syntax error, with resource
+failures allowed separately. A pattern-only matching denotation independent
+of the chosen derivation remains open. [PROOF.md](PROOF.md) states the theorems
+and remaining obligation.
 
 Recursive semantic models and proof certificates use SPARK's `Static` ghost
 level. They are proved but never executed, including in contract-enabled

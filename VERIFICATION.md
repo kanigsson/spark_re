@@ -473,3 +473,46 @@ flow analysis and proof. Both test modes passed the Ada cases and **1,198
 differential/CLI checks over 290 patterns**. The receipt and command logs are in
 `validation/20260913T024145Z/`; source hashes there record the code at that
 pass, and this section was written afterward.
+
+## Parser completeness and structural syntax rejection — 2026-09-13
+
+From baseline `7dc6ca7` (2,913 checks), this pass proves **all 3,076 checks**,
+with zero justified and zero unproved checks. It uses the same GNAT Pro 27
+compiler, local GNATprove, and `--level=2 --timeout=20 --prover=cvc5,z3
+--counterexamples=off -j4` settings.
+
+| Category | Checks |
+| --- | ---: |
+| Data dependencies | 17 |
+| Initialization | 107 |
+| Runtime checks | 1,460 |
+| Assertions | 252 |
+| Functional contracts | 970 |
+| Termination | 270 |
+
+`Lemma_Grammar_Continuation` proves that the independent expression grammar
+implies byte-only syntax validity. The parser loop preserves that validity
+through every token and structural transition. `Parse_Complete` applies the
+result to an actual parse of any supplied complete grammar derivation:
+`Syntax_Error` is impossible; `Success`, `Node_Limit`, and `Pattern_Too_Long`
+remain possible. The successful result still derives the complete pattern.
+Thus syntax rejection excludes every complete derivation in the modeled tree
+type. No resource-sufficiency or derivation-independent matching theorem is
+claimed; the latter remains open in `PROOF.md`.
+
+All new semantic functions, lemmas, contracts, and loop certificates are static
+ghost code. Executable parsing is unchanged. No assumptions, proof suppressions,
+or weakened contracts were introduced. Inspection of release and checks
+`regex.o` files found no new continuation-model/theorem symbols or references
+to allocation or big-integer routines.
+
+`python3 scripts/validate.py` passed release tests, executable-contract tests,
+flow analysis (214 checks), and proof. Both test modes passed the Ada cases and
+**1,198 differential/CLI checks over 290 patterns**. GNATprove reports no
+warnings; the existing ordinary compiler warnings remain in the matching
+layer and facade.
+
+The receipt and command logs are in `validation/20260913T032302Z/`; proof took
+62.748 seconds. All recorded source hashes matched after validation. Only this
+evidence section was added afterward. The proof covers the default `Regex`
+instantiation; custom capacities require their own proof run.

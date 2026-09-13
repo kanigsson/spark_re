@@ -3,11 +3,13 @@
 The tree compiler and NFA simulator are proved sound and complete against
 independent tree-span and instruction-path models. Lexical scanning is proved
 against independent byte-span definitions, and successful parsing constructs
-a derivation in an independent expression grammar. The composed theorem
-retains that derived tree as its interpretation of the pattern.
+a derivation in an independent expression grammar. Parser completeness proves
+that a pattern with any such derivation cannot produce `Syntax_Error`;
+resource failures remain explicit. The composed matching theorem retains the
+derived tree as its interpretation of the pattern.
 
-Remaining obligations are parser completeness and structural syntax rejection,
-and a pattern-only denotation independent of the chosen grammar derivation.
+The remaining language obligation is a pattern-only matching denotation
+independent of the chosen grammar derivation.
 
 ## Unit structure
 
@@ -18,21 +20,23 @@ discharged, and re-discharged, on its own:
 | --- | --- | --- |
 | `Spark_Re_Common` | limits, `Compile_Status`, `Byte_Set` | nothing; no body |
 | `Spark_Re_Trees` | tree types, `Tree_Valid`, `Matches`, `Nullable` | span semantics and its empty-span lemmas |
-| `Spark_Re_Trees.Parsing` | scanners, lexical models, `Grammar`, `Parse` | lexical and grammar refinement |
+| `Spark_Re_Trees.Parsing` | scanners, lexical models, `Grammar`, `Pattern_Valid`, `Parse` | lexical refinement, parser soundness and completeness |
 | `Spark_Re_Trees.Matching` | instructions, `Compile_Tree`, simulator, path model | tree-to-NFA equivalence and the simulator model |
 | `Spark_Re` | facade | composition only |
 
 The two large layers share only the tree. `Spark_Re_Trees.Parsing` never names
 a program, an instruction or a state; `Spark_Re_Trees.Matching` never names a
 pattern span, a scanner or a grammar level. Neither withs the other. The
-parser-completeness obligation recorded below therefore lives entirely inside
-one unit and can be attacked without re-establishing the compiler theorem.
+parser-completeness proof lives entirely inside the parsing unit and uses no
+compiler or simulator theorem.
 
-Two predicates are declared in a spec and defined in the corresponding body,
+Three predicates are declared in a spec and defined in the corresponding body,
 so that a client carries them without being able to unfold them:
 
 - `Grammar` is the parser's derivation relation. `Parse` produces it and the
   facade passes it on; only the parser body sees what it means.
+- `Pattern_Valid` is byte-only syntax acceptance. Grammar derivations imply
+  it, and `Parse` cannot report a syntax error when it holds.
 - `Tree_Compiled` is the matcher's construction certificate, packaging the
   accepting state and root `Compiled_Shape` that `Compile_Tree` establishes and
   `Lemma_Compiler_Correct` consumes. The facade joins a parse result to a
@@ -347,14 +351,48 @@ theorem. On success, both `NFA_Accepts` and the executable matching result equal
 `Tree_Accepts` for the returned grammar-derived tree. Failure leaves an invalid
 program and makes no matching-language claim.
 
-## Remaining pattern obligations
+## Parser completeness and structural syntax rejection
 
-The successful-parse theorem is soundness of the constructed derivation.
-It does not prove parser completeness: a pattern with a grammar derivation
-must never produce `Syntax_Error`, with capacity failures allowed separately.
-Equivalently, structural syntax rejection still needs a proof that no grammar
-derivation exists. The lexical scanners already prove their own acceptance
-and rejection conditions.
+`Pattern_Valid` is an independent byte-only syntax predicate. Its recursive
+`Syntax_Continuation` model consumes maximal lexical tokens, tracks the number
+of unmatched opening parentheses, and distinguishes no pending atom, a plain
+atom, and an already quantified atom. End of pattern requires zero unmatched
+parentheses. Closing groups and alternation accept empty contents; a postfix
+quantifier requires a plain atom. Classes and escapes consume their lexical
+spans, so punctuation inside them has no structural effect. The model calls
+neither `Parse` nor its scanners and contains no allocation or capacity state.
+Its termination variant is the remaining pattern length.
+
+`Lemma_Grammar_Continuation` proves by induction on the existing `Grammar`
+relation that a derived span can precede any compatible valid continuation.
+Atoms leave a plain atom; factors may leave a quantified one; terms and
+expressions may also be empty. These continuation hypotheses compose across
+concatenation and alternation and discharge grouping and quantifier attachment.
+The induction follows the grammar's node/span/precedence variant, including
+empty left terms and groups that allocate no node. `Lemma_Grammar_Valid`
+specializes it to a complete expression followed by the end of the pattern.
+Thus byte-only validity is justified from the independent grammar, rather
+than defined as the parser's success result.
+
+The executable parser loop maintains that an initially valid pattern has a
+valid continuation at its current cursor, group depth, and pending-atom state.
+Each structural and lexical error branch contradicts that invariant. The
+allocation and flushing helpers prove that they introduce only `Node_Limit`,
+not syntax errors. Their existing error propagation remains unchanged,
+including a malformed leaf overriding an earlier allocation failure.
+
+`Parse_Complete` takes an arbitrary valid tree deriving the complete pattern,
+proves `Pattern_Valid`, and calls the actual `Parse`. Its postcondition permits
+only `Success`, `Node_Limit`, or `Pattern_Too_Long`; success retains the existing
+grammar derivation for the returned tree. Consequently `Syntax_Error` excludes
+any complete derivation in the modeled tree type. This closes parser
+completeness and structural syntax rejection, with explicit resource failures.
+An invalid pattern may still hit a resource limit before its error is reached;
+no exact resource-sufficiency claim is made.
+
+All added definitions, lemmas and loop certificates are static ghost code.
+
+## Remaining pattern obligation
 
 The composed matching theorem keeps the derived tree as an explicit witness.
 To obtain a single pattern-only acceptance predicate, also prove that grammar

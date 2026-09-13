@@ -28,6 +28,20 @@ package Spark_Re_Trees.Parsing with SPARK_Mode is
      Subprogram_Variant =>
        (Decreases => Id, Decreases => Last - First, Decreases => Level);
 
+   --  Byte-only syntax acceptance, independent of allocation and Parse.
+   function Pattern_Valid (Pattern : String) return Boolean
+   with Ghost => Static;
+
+   --  Every complete grammar derivation satisfies the byte-only predicate.
+   procedure Lemma_Grammar_Valid
+     (Pattern : String; Nodes : Tree; Id : Live_Node)
+   with
+     Ghost => Static,
+     Pre   =>
+       Tree_Valid (Nodes)
+       and then Grammar (Pattern, Nodes, Id, 0, Pattern'Length, Expr_Grammar),
+     Post  => Pattern_Valid (Pattern);
+
    procedure Parse
      (Pattern : String;
       Nodes   : out Tree;
@@ -39,11 +53,39 @@ package Spark_Re_Trees.Parsing with SPARK_Mode is
        (Static =>
           Tree_Valid (Nodes)
           and then
+            Status in Success | Syntax_Error | Node_Limit | Pattern_Too_Long
+          and then (if Pattern_Valid (Pattern) then Status /= Syntax_Error)
+          and then
             (if Status = Success
              then
                Root /= 0
                and then
                  Grammar
                    (Pattern, Nodes, Root, 0, Pattern'Length, Expr_Grammar)));
+
+   --  Completeness for an arbitrary supplied derivation. Resource failures
+   --  remain explicit; a valid derivation can never produce Syntax_Error.
+   procedure Parse_Complete
+     (Pattern : String;
+      Witness : Tree;
+      Id      : Live_Node;
+      Nodes   : out Tree;
+      Root    : out Node_Id;
+      Status  : out Compile_Status)
+   with
+     Ghost => Static,
+     Pre   =>
+       Tree_Valid (Witness)
+       and then
+         Grammar (Pattern, Witness, Id, 0, Pattern'Length, Expr_Grammar),
+     Post  =>
+       Tree_Valid (Nodes)
+       and then Status in Success | Node_Limit | Pattern_Too_Long
+       and then
+         (if Status = Success
+          then
+            Root /= 0
+            and then
+              Grammar (Pattern, Nodes, Root, 0, Pattern'Length, Expr_Grammar));
 
 end Spark_Re_Trees.Parsing;
