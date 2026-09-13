@@ -19,18 +19,17 @@ package Spark_Re with SPARK_Mode is
    Max_Repetition     : constant := Spark_Re_Common.Max_Repetition;
 
    subtype Compile_Status is Spark_Re_Common.Compile_Status;
-   function Success return Compile_Status
-     renames Spark_Re_Common.Success;
+   function Success return Compile_Status renames Spark_Re_Common.Success;
    function Syntax_Error return Compile_Status
-     renames Spark_Re_Common.Syntax_Error;
+   renames Spark_Re_Common.Syntax_Error;
    function Pattern_Too_Long return Compile_Status
-     renames Spark_Re_Common.Pattern_Too_Long;
+   renames Spark_Re_Common.Pattern_Too_Long;
    function Node_Limit return Compile_Status
-     renames Spark_Re_Common.Node_Limit;
+   renames Spark_Re_Common.Node_Limit;
    function State_Limit return Compile_Status
-     renames Spark_Re_Common.State_Limit;
+   renames Spark_Re_Common.State_Limit;
    function Expansion_Limit return Compile_Status
-     renames Spark_Re_Common.Expansion_Limit;
+   renames Spark_Re_Common.Expansion_Limit;
 
    type Program is private;
    function Is_Valid (Self : Program) return Boolean
@@ -88,16 +87,14 @@ package Spark_Re with SPARK_Mode is
      Post  =>
        Well_Formed (Result)
        and then (Is_Valid (Result) = (Status = Success))
-       and then
-         (if Status = Success
-          then
-            NFA_Accepts (Result, Text, Whole)
-            = Pattern_Accepts (Pattern, Text, Whole)
-            and then
-              (if Whole
-               then Full_Match (Result, Text)
-               else Search (Result, Text))
-              = Pattern_Accepts (Pattern, Text, Whole));
+       and then (if Status = Success
+                 then
+                   NFA_Accepts (Result, Text, Whole)
+                   = Pattern_Accepts (Pattern, Text, Whole)
+                   and then (if Whole
+                             then Full_Match (Result, Text)
+                             else Search (Result, Text))
+                            = Pattern_Accepts (Pattern, Text, Whole));
 private
    package Trees is new Spark_Re_Trees (Max_Nodes);
    package Matching is new Trees.Matching (Max_States);

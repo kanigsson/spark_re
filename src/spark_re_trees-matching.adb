@@ -1,6 +1,8 @@
 with Ada.Numerics.Big_Numbers.Big_Integers;
 
-package body Spark_Re_Trees.Matching with SPARK_Mode is
+package body Spark_Re_Trees.Matching
+  with SPARK_Mode
+is
    use Ada.Numerics.Big_Numbers.Big_Integers;
 
    function Closed_Interval
@@ -9,13 +11,12 @@ package body Spark_Re_Trees.Matching with SPARK_Mode is
          (if K > Base
           then
             Code (K).Op in Consume | Split | At_Start | At_End
-            and then
-              (Code (K).Next_1 = Next or Code (K).Next_1 in Base + 1 .. Limit)
-            and then
-              (if Code (K).Op = Split
-               then
-                 Code (K).Next_2 = Next
-                 or Code (K).Next_2 in Base + 1 .. Limit)))
+            and then (Code (K).Next_1 = Next
+                      or Code (K).Next_1 in Base + 1 .. Limit)
+            and then (if Code (K).Op = Split
+                      then
+                        Code (K).Next_2 = Next
+                        or Code (K).Next_2 in Base + 1 .. Limit)))
    with Ghost => Static;
 
    function Fragment_Closed
@@ -24,14 +25,12 @@ package body Spark_Re_Trees.Matching with SPARK_Mode is
          (if K > Base
           then
             Self.Code (K).Op in Consume | Split | At_Start | At_End
-            and then
-              (Self.Code (K).Next_1 = Next
-               or Self.Code (K).Next_1 in Base + 1 .. Self.Count)
-            and then
-              (if Self.Code (K).Op = Split
-               then
-                 Self.Code (K).Next_2 = Next
-                 or Self.Code (K).Next_2 in Base + 1 .. Self.Count)))
+            and then (Self.Code (K).Next_1 = Next
+                      or Self.Code (K).Next_1 in Base + 1 .. Self.Count)
+            and then (if Self.Code (K).Op = Split
+                      then
+                        Self.Code (K).Next_2 = Next
+                        or Self.Code (K).Next_2 in Base + 1 .. Self.Count)))
    with Ghost => Static;
 
    --  Mathematical budgets allow compositional path witnesses without an
@@ -54,15 +53,14 @@ package body Spark_Re_Trees.Matching with SPARK_Mode is
             when Consume             =>
               First < Last
               and then Code (Entry_State).Bytes (Text (Text'First + First))
-              and then
-                Fragment_Path
-                  (Code,
-                   Code (Entry_State).Next_1,
-                   Stop,
-                   Text,
-                   First + 1,
-                   Last,
-                   Fuel - 1),
+              and then Fragment_Path
+                         (Code,
+                          Code (Entry_State).Next_1,
+                          Stop,
+                          Text,
+                          First + 1,
+                          Last,
+                          Fuel - 1),
             when Split               =>
               Fragment_Path
                 (Code,
@@ -72,37 +70,34 @@ package body Spark_Re_Trees.Matching with SPARK_Mode is
                  First,
                  Last,
                  Fuel - 1)
-              or else
-                Fragment_Path
-                  (Code,
-                   Code (Entry_State).Next_2,
-                   Stop,
-                   Text,
-                   First,
-                   Last,
-                   Fuel - 1),
+              or else Fragment_Path
+                        (Code,
+                         Code (Entry_State).Next_2,
+                         Stop,
+                         Text,
+                         First,
+                         Last,
+                         Fuel - 1),
             when At_Start            =>
               First = 0
-              and then
-                Fragment_Path
-                  (Code,
-                   Code (Entry_State).Next_1,
-                   Stop,
-                   Text,
-                   First,
-                   Last,
-                   Fuel - 1),
+              and then Fragment_Path
+                         (Code,
+                          Code (Entry_State).Next_1,
+                          Stop,
+                          Text,
+                          First,
+                          Last,
+                          Fuel - 1),
             when At_End              =>
               First = Text'Length
-              and then
-                Fragment_Path
-                  (Code,
-                   Code (Entry_State).Next_1,
-                   Stop,
-                   Text,
-                   First,
-                   Last,
-                   Fuel - 1)))
+              and then Fragment_Path
+                         (Code,
+                          Code (Entry_State).Next_1,
+                          Stop,
+                          Text,
+                          First,
+                          Last,
+                          Fuel - 1)))
    with
      Ghost              => Static,
      Pre                => First <= Last and Last <= Text'Length,
@@ -190,13 +185,11 @@ package body Spark_Re_Trees.Matching with SPARK_Mode is
        and Last <= Text'Length
        and Stop <= Base
        and Base <= Before.Count
-       and
-         (Entry_State = Stop
-          or (Entry_State > Base and Entry_State <= Before.Count))
+       and (Entry_State = Stop
+            or (Entry_State > Base and Entry_State <= Before.Count))
        and Fragment_Closed (Before, Base, Stop)
-       and
-         (for all K in 1 .. Before.Count =>
-            (if K > Base then Before.Code (K) = After.Code (K))),
+       and (for all K in 1 .. Before.Count =>
+              (if K > Base then Before.Code (K) = After.Code (K))),
      Post               =>
        Fragment_Path (Before.Code, Entry_State, Stop, Text, First, Last, Fuel)
        = Fragment_Path
@@ -276,14 +269,13 @@ package body Spark_Re_Trees.Matching with SPARK_Mode is
        and then Middle <= Base
        and then Stop <= Base
        and then Base <= Limit
-       and then
-         (Entry_State = Middle
-          or (Entry_State > Base and then Entry_State <= Limit))
+       and then (Entry_State = Middle
+                 or (Entry_State > Base and then Entry_State <= Limit))
        and then Closed_Interval (Code, Base, Limit, Middle)
-       and then
-         Fragment_Path (Code, Entry_State, Middle, Text, First, Cut, Left_Fuel)
-       and then
-         Fragment_Path (Code, Middle, Stop, Text, Cut, Last, Right_Fuel),
+       and then Fragment_Path
+                  (Code, Entry_State, Middle, Text, First, Cut, Left_Fuel)
+       and then Fragment_Path
+                  (Code, Middle, Stop, Text, Cut, Last, Right_Fuel),
      Post               =>
        Fragment_Path
          (Code, Entry_State, Stop, Text, First, Last, Left_Fuel + Right_Fuel),
@@ -394,19 +386,18 @@ package body Spark_Re_Trees.Matching with SPARK_Mode is
        and then Middle <= Base
        and then Stop <= Base
        and then Base <= Limit
-       and then
-         (Entry_State = Middle
-          or (Entry_State > Base and then Entry_State <= Limit))
+       and then (Entry_State = Middle
+                 or (Entry_State > Base and then Entry_State <= Limit))
        and then Closed_Interval (Code, Base, Limit, Middle)
-       and then
-         Fragment_Path (Code, Entry_State, Stop, Text, First, Last, Fuel),
+       and then Fragment_Path
+                  (Code, Entry_State, Stop, Text, First, Last, Fuel),
      Post               =>
        Cut in First .. Last
        and then Left_Fuel <= Fuel
-       and then
-         Fragment_Path (Code, Entry_State, Middle, Text, First, Cut, Left_Fuel)
-       and then
-         Fragment_Path (Code, Middle, Stop, Text, Cut, Last, Fuel - Left_Fuel),
+       and then Fragment_Path
+                  (Code, Entry_State, Middle, Text, First, Cut, Left_Fuel)
+       and then Fragment_Path
+                  (Code, Middle, Stop, Text, Cut, Last, Fuel - Left_Fuel),
      Subprogram_Variant => (Decreases => Fuel)
    is
    begin
@@ -496,22 +487,23 @@ package body Spark_Re_Trees.Matching with SPARK_Mode is
      (N : Node; Self : Program; Base, Next, Entry_State : State_Id)
       return Boolean
    is (Next <= Base
-       and then
-         (case N.Kind is
-            when Empty_Node                         => Entry_State = Next,
-            when Bytes_Node | Start_Node | End_Node =>
-              Entry_State > Base
-              and then Entry_State <= Self.Count
-              and then Self.Code (Entry_State).Next_1 = Next
-              and then
-                (case N.Kind is
-                   when Bytes_Node =>
-                     Self.Code (Entry_State).Op = Consume
-                     and Self.Code (Entry_State).Bytes = N.Bytes,
-                   when Start_Node => Self.Code (Entry_State).Op = At_Start,
-                   when End_Node   => Self.Code (Entry_State).Op = At_End,
-                   when others     => False),
-            when others                             => False))
+       and then (case N.Kind is
+                   when Empty_Node                         =>
+                     Entry_State = Next,
+                   when Bytes_Node | Start_Node | End_Node =>
+                     Entry_State > Base
+                     and then Entry_State <= Self.Count
+                     and then Self.Code (Entry_State).Next_1 = Next
+                     and then (case N.Kind is
+                                 when Bytes_Node =>
+                                   Self.Code (Entry_State).Op = Consume
+                                   and Self.Code (Entry_State).Bytes = N.Bytes,
+                                 when Start_Node =>
+                                   Self.Code (Entry_State).Op = At_Start,
+                                 when End_Node   =>
+                                   Self.Code (Entry_State).Op = At_End,
+                                 when others     => False),
+                   when others                             => False))
    with Ghost => Static;
 
    procedure Lemma_Leaf_Path
@@ -542,353 +534,781 @@ package body Spark_Re_Trees.Matching with SPARK_Mode is
    --  interval. Existential boundaries retain the witnesses needed to compose
    --  child languages without defining semantics by calling the compiler.
    function Compiled_Shape
-     (Nodes : Tree; Id : Live_Node; Code : Code_Array;
+     (Nodes                          : Tree;
+      Id                             : Live_Node;
+      Code                           : Code_Array;
       Base, Limit, Next, Entry_State : State_Id) return Boolean
-   with Ghost => Static, Pre => Tree_Valid (Nodes),
+   with
+     Ghost              => Static,
+     Pre                => Tree_Valid (Nodes),
      Subprogram_Variant =>
        (Decreases => Id, Decreases => Natural'(0), Decreases => Natural'(0));
 
    function Copies_Shape
-     (Nodes : Tree; Id : Live_Node; Code : Code_Array;
-      Base, Limit, Next, Entry_State : State_Id; Count : Natural) return Boolean
-   with Ghost => Static, Pre => Tree_Valid (Nodes),
+     (Nodes                          : Tree;
+      Id                             : Live_Node;
+      Code                           : Code_Array;
+      Base, Limit, Next, Entry_State : State_Id;
+      Count                          : Natural) return Boolean
+   with
+     Ghost              => Static,
+     Pre                => Tree_Valid (Nodes),
      Subprogram_Variant =>
        (Decreases => Id, Decreases => Natural'(1), Decreases => Count);
 
    function Optional_Shape
-     (Nodes : Tree; Id : Live_Node; Code : Code_Array;
-      Base, Limit, Next, Entry_State : State_Id; Count : Natural) return Boolean
-   with Ghost => Static, Pre => Tree_Valid (Nodes),
+     (Nodes                          : Tree;
+      Id                             : Live_Node;
+      Code                           : Code_Array;
+      Base, Limit, Next, Entry_State : State_Id;
+      Count                          : Natural) return Boolean
+   with
+     Ghost              => Static,
+     Pre                => Tree_Valid (Nodes),
      Subprogram_Variant =>
        (Decreases => Id, Decreases => Natural'(1), Decreases => Count);
 
    function Tail_Shape
-     (Nodes : Tree; Id : Live_Node; Code : Code_Array;
-      Base, Limit, Next, Entry_State : State_Id; Count : Natural; Unlimited : Boolean) return Boolean
-   with Ghost => Static, Pre => Tree_Valid (Nodes),
+     (Nodes                          : Tree;
+      Id                             : Live_Node;
+      Code                           : Code_Array;
+      Base, Limit, Next, Entry_State : State_Id;
+      Count                          : Natural;
+      Unlimited                      : Boolean) return Boolean
+   with
+     Ghost              => Static,
+     Pre                => Tree_Valid (Nodes),
      Subprogram_Variant =>
        (Decreases => Id, Decreases => Natural'(2), Decreases => Count);
 
    function Compiled_Shape
-     (Nodes : Tree; Id : Live_Node; Code : Code_Array;
+     (Nodes                          : Tree;
+      Id                             : Live_Node;
+      Code                           : Code_Array;
       Base, Limit, Next, Entry_State : State_Id) return Boolean
-   is (Base <= Limit and then Next <= Base and then Entry_State <= Limit
-       and then
-         (case Nodes (Id).Kind is
-            when Empty_Node => Base = Limit and Entry_State = Next,
-            when Bytes_Node | Start_Node | End_Node =>
-              Base < Limit and then Limit = Base + 1 and then Entry_State = Limit
-              and then Code (Limit).Next_1 = Next
-              and then
-                (case Nodes (Id).Kind is
-                   when Bytes_Node => Code (Limit).Op = Consume
-                     and Code (Limit).Bytes = Nodes (Id).Bytes,
-                   when Start_Node => Code (Limit).Op = At_Start,
-                   when End_Node => Code (Limit).Op = At_End,
-                   when others => False),
-            when Concat_Node =>
-              (for some Cut in Base .. Limit =>
-                 (for some Middle in 0 .. Cut =>
-                    Compiled_Shape
-                      (Nodes, Nodes (Id).Right, Code, Base, Cut, Next, Middle)
-                    and then Compiled_Shape
-                      (Nodes, Nodes (Id).Left, Code, Cut, Limit, Middle, Entry_State))),
-            when Alt_Node =>
-              Base < Limit and then Entry_State = Limit
-              and then Code (Limit).Op = Split
-              and then (for some Cut in Base .. Limit - 1 =>
-                Compiled_Shape
-                  (Nodes, Nodes (Id).Left, Code, Base, Cut, Next, Code (Limit).Next_1)
-                and then Compiled_Shape
-                  (Nodes, Nodes (Id).Right, Code, Cut, Limit - 1, Next, Code (Limit).Next_2)),
-            when Repeat_Node =>
-              (for some Cut in Base .. Limit =>
-                 (for some Middle in 0 .. Cut =>
-                    Tail_Shape
-                      (Nodes, Nodes (Id).Left, Code, Base, Cut, Next, Middle,
-                       (if Nodes (Id).Unlimited then 0 else Nodes (Id).High - Nodes (Id).Low),
-                       Nodes (Id).Unlimited)
-                    and then Copies_Shape
-                      (Nodes, Nodes (Id).Left, Code, Cut, Limit, Middle, Entry_State,
-                       Nodes (Id).Low)))));
+   is (Base <= Limit
+       and then Next <= Base
+       and then Entry_State <= Limit
+       and then (case Nodes (Id).Kind is
+                   when Empty_Node                         =>
+                     Base = Limit and Entry_State = Next,
+                   when Bytes_Node | Start_Node | End_Node =>
+                     Base < Limit
+                     and then Limit = Base + 1
+                     and then Entry_State = Limit
+                     and then Code (Limit).Next_1 = Next
+                     and then (case Nodes (Id).Kind is
+                                 when Bytes_Node =>
+                                   Code (Limit).Op = Consume
+                                   and Code (Limit).Bytes = Nodes (Id).Bytes,
+                                 when Start_Node => Code (Limit).Op = At_Start,
+                                 when End_Node   => Code (Limit).Op = At_End,
+                                 when others     => False),
+                   when Concat_Node                        =>
+                     (for some Cut in Base .. Limit =>
+                        (for some Middle in 0 .. Cut =>
+                           Compiled_Shape
+                             (Nodes,
+                              Nodes (Id).Right,
+                              Code,
+                              Base,
+                              Cut,
+                              Next,
+                              Middle)
+                           and then Compiled_Shape
+                                      (Nodes,
+                                       Nodes (Id).Left,
+                                       Code,
+                                       Cut,
+                                       Limit,
+                                       Middle,
+                                       Entry_State))),
+                   when Alt_Node                           =>
+                     Base < Limit
+                     and then Entry_State = Limit
+                     and then Code (Limit).Op = Split
+                     and then (for some Cut in Base .. Limit - 1 =>
+                                 Compiled_Shape
+                                   (Nodes,
+                                    Nodes (Id).Left,
+                                    Code,
+                                    Base,
+                                    Cut,
+                                    Next,
+                                    Code (Limit).Next_1)
+                                 and then Compiled_Shape
+                                            (Nodes,
+                                             Nodes (Id).Right,
+                                             Code,
+                                             Cut,
+                                             Limit - 1,
+                                             Next,
+                                             Code (Limit).Next_2)),
+                   when Repeat_Node                        =>
+                     (for some Cut in Base .. Limit =>
+                        (for some Middle in 0 .. Cut =>
+                           Tail_Shape
+                             (Nodes,
+                              Nodes (Id).Left,
+                              Code,
+                              Base,
+                              Cut,
+                              Next,
+                              Middle,
+                              (if Nodes (Id).Unlimited
+                               then 0
+                               else Nodes (Id).High - Nodes (Id).Low),
+                              Nodes (Id).Unlimited)
+                           and then Copies_Shape
+                                      (Nodes,
+                                       Nodes (Id).Left,
+                                       Code,
+                                       Cut,
+                                       Limit,
+                                       Middle,
+                                       Entry_State,
+                                       Nodes (Id).Low)))));
 
    function Copies_Shape
-     (Nodes : Tree; Id : Live_Node; Code : Code_Array;
-      Base, Limit, Next, Entry_State : State_Id; Count : Natural) return Boolean
-   is (Base <= Limit and then Next <= Base and then Entry_State <= Limit
-       and then (if Count = 0 then Base = Limit and Entry_State = Next
-       else (for some Cut in Base .. Limit =>
-         (for some Middle in 0 .. Cut =>
-            Copies_Shape (Nodes, Id, Code, Base, Cut, Next, Middle, Count - 1)
-            and then Compiled_Shape (Nodes, Id, Code, Cut, Limit, Middle, Entry_State)))));
+     (Nodes                          : Tree;
+      Id                             : Live_Node;
+      Code                           : Code_Array;
+      Base, Limit, Next, Entry_State : State_Id;
+      Count                          : Natural) return Boolean
+   is (Base <= Limit
+       and then Next <= Base
+       and then Entry_State <= Limit
+       and then (if Count = 0
+                 then Base = Limit and Entry_State = Next
+                 else
+                   (for some Cut in Base .. Limit =>
+                      (for some Middle in 0 .. Cut =>
+                         Copies_Shape
+                           (Nodes,
+                            Id,
+                            Code,
+                            Base,
+                            Cut,
+                            Next,
+                            Middle,
+                            Count - 1)
+                         and then Compiled_Shape
+                                    (Nodes,
+                                     Id,
+                                     Code,
+                                     Cut,
+                                     Limit,
+                                     Middle,
+                                     Entry_State)))));
 
    function Optional_Shape
-     (Nodes : Tree; Id : Live_Node; Code : Code_Array;
-      Base, Limit, Next, Entry_State : State_Id; Count : Natural) return Boolean
-   is (Base <= Limit and then Next <= Base and then Entry_State <= Limit
-       and then (if Count = 0 then Base = Limit and Entry_State = Next
-       else Base < Limit and then Entry_State = Limit and then Code (Limit).Op = Split
-         and then (for some Cut in Base .. Limit - 1 =>
-            Optional_Shape
-              (Nodes, Id, Code, Base, Cut, Next, Code (Limit).Next_2, Count - 1)
-            and then Compiled_Shape
-              (Nodes, Id, Code, Cut, Limit - 1, Code (Limit).Next_2, Code (Limit).Next_1))));
+     (Nodes                          : Tree;
+      Id                             : Live_Node;
+      Code                           : Code_Array;
+      Base, Limit, Next, Entry_State : State_Id;
+      Count                          : Natural) return Boolean
+   is (Base <= Limit
+       and then Next <= Base
+       and then Entry_State <= Limit
+       and then (if Count = 0
+                 then Base = Limit and Entry_State = Next
+                 else
+                   Base < Limit
+                   and then Entry_State = Limit
+                   and then Code (Limit).Op = Split
+                   and then (for some Cut in Base .. Limit - 1 =>
+                               Optional_Shape
+                                 (Nodes,
+                                  Id,
+                                  Code,
+                                  Base,
+                                  Cut,
+                                  Next,
+                                  Code (Limit).Next_2,
+                                  Count - 1)
+                               and then Compiled_Shape
+                                          (Nodes,
+                                           Id,
+                                           Code,
+                                           Cut,
+                                           Limit - 1,
+                                           Code (Limit).Next_2,
+                                           Code (Limit).Next_1))));
 
    function Tail_Shape
-     (Nodes : Tree; Id : Live_Node; Code : Code_Array;
-      Base, Limit, Next, Entry_State : State_Id; Count : Natural; Unlimited : Boolean)
-      return Boolean
-   is (Base <= Limit and then Next <= Base and then Entry_State <= Limit
-       and then (if Unlimited then
-         Base < Limit and then Entry_State = Base + 1
-         and then Code (Entry_State).Op = Split and then Code (Entry_State).Next_2 = Next
-         and then Compiled_Shape
-           (Nodes, Id, Code, Entry_State, Limit, Entry_State, Code (Entry_State).Next_1)
-       else Optional_Shape (Nodes, Id, Code, Base, Limit, Next, Entry_State, Count)));
+     (Nodes                          : Tree;
+      Id                             : Live_Node;
+      Code                           : Code_Array;
+      Base, Limit, Next, Entry_State : State_Id;
+      Count                          : Natural;
+      Unlimited                      : Boolean) return Boolean
+   is (Base <= Limit
+       and then Next <= Base
+       and then Entry_State <= Limit
+       and then (if Unlimited
+                 then
+                   Base < Limit
+                   and then Entry_State = Base + 1
+                   and then Code (Entry_State).Op = Split
+                   and then Code (Entry_State).Next_2 = Next
+                   and then Compiled_Shape
+                              (Nodes,
+                               Id,
+                               Code,
+                               Entry_State,
+                               Limit,
+                               Entry_State,
+                               Code (Entry_State).Next_1)
+                 else
+                   Optional_Shape
+                     (Nodes,
+                      Id,
+                      Code,
+                      Base,
+                      Limit,
+                      Next,
+                      Entry_State,
+                      Count)));
 
    procedure Reveal_Shape
-     (Nodes : Tree; Id : Live_Node; Code : Code_Array;
+     (Nodes                          : Tree;
+      Id                             : Live_Node;
+      Code                           : Code_Array;
       Base, Limit, Next, Entry_State : State_Id)
-   with Ghost => Static,
-     Pre => Tree_Valid (Nodes) and then Compiled_Shape
-       (Nodes, Id, Code, Base, Limit, Next, Entry_State),
-     Post => (Base <= Limit and then Next <= Base and then Entry_State <= Limit
-       and then
-         (case Nodes (Id).Kind is
-            when Empty_Node => Base = Limit and Entry_State = Next,
-            when Bytes_Node | Start_Node | End_Node =>
-              Base < Limit and then Limit = Base + 1 and then Entry_State = Limit
-              and then Code (Limit).Next_1 = Next
-              and then
-                (case Nodes (Id).Kind is
-                   when Bytes_Node => Code (Limit).Op = Consume
-                     and Code (Limit).Bytes = Nodes (Id).Bytes,
-                   when Start_Node => Code (Limit).Op = At_Start,
-                   when End_Node => Code (Limit).Op = At_End,
-                   when others => False),
-            when Concat_Node =>
-              (for some Cut in Base .. Limit =>
-                 (for some Middle in 0 .. Cut =>
-                    Compiled_Shape
-                      (Nodes, Nodes (Id).Right, Code, Base, Cut, Next, Middle)
-                    and then Compiled_Shape
-                      (Nodes, Nodes (Id).Left, Code, Cut, Limit, Middle, Entry_State))),
-            when Alt_Node =>
-              Base < Limit and then Entry_State = Limit
-              and then Code (Limit).Op = Split
-              and then (for some Cut in Base .. Limit - 1 =>
-                Compiled_Shape
-                  (Nodes, Nodes (Id).Left, Code, Base, Cut, Next, Code (Limit).Next_1)
-                and then Compiled_Shape
-                  (Nodes, Nodes (Id).Right, Code, Cut, Limit - 1, Next, Code (Limit).Next_2)),
-            when Repeat_Node =>
-              (for some Cut in Base .. Limit =>
-                 (for some Middle in 0 .. Cut =>
-                    Tail_Shape
-                      (Nodes, Nodes (Id).Left, Code, Base, Cut, Next, Middle,
-                       (if Nodes (Id).Unlimited then 0 else Nodes (Id).High - Nodes (Id).Low),
-                       Nodes (Id).Unlimited)
-                    and then Copies_Shape
-                      (Nodes, Nodes (Id).Left, Code, Cut, Limit, Middle, Entry_State,
-                       Nodes (Id).Low)))))
+   with
+     Ghost => Static,
+     Pre   =>
+       Tree_Valid (Nodes)
+       and then Compiled_Shape
+                  (Nodes, Id, Code, Base, Limit, Next, Entry_State),
+     Post  =>
+       (Base <= Limit
+        and then Next <= Base
+        and then Entry_State <= Limit
+        and then (case Nodes (Id).Kind is
+                    when Empty_Node                         =>
+                      Base = Limit and Entry_State = Next,
+                    when Bytes_Node | Start_Node | End_Node =>
+                      Base < Limit
+                      and then Limit = Base + 1
+                      and then Entry_State = Limit
+                      and then Code (Limit).Next_1 = Next
+                      and then (case Nodes (Id).Kind is
+                                  when Bytes_Node =>
+                                    Code (Limit).Op = Consume
+                                    and Code (Limit).Bytes = Nodes (Id).Bytes,
+                                  when Start_Node =>
+                                    Code (Limit).Op = At_Start,
+                                  when End_Node   => Code (Limit).Op = At_End,
+                                  when others     => False),
+                    when Concat_Node                        =>
+                      (for some Cut in Base .. Limit =>
+                         (for some Middle in 0 .. Cut =>
+                            Compiled_Shape
+                              (Nodes,
+                               Nodes (Id).Right,
+                               Code,
+                               Base,
+                               Cut,
+                               Next,
+                               Middle)
+                            and then Compiled_Shape
+                                       (Nodes,
+                                        Nodes (Id).Left,
+                                        Code,
+                                        Cut,
+                                        Limit,
+                                        Middle,
+                                        Entry_State))),
+                    when Alt_Node                           =>
+                      Base < Limit
+                      and then Entry_State = Limit
+                      and then Code (Limit).Op = Split
+                      and then (for some Cut in Base .. Limit - 1 =>
+                                  Compiled_Shape
+                                    (Nodes,
+                                     Nodes (Id).Left,
+                                     Code,
+                                     Base,
+                                     Cut,
+                                     Next,
+                                     Code (Limit).Next_1)
+                                  and then Compiled_Shape
+                                             (Nodes,
+                                              Nodes (Id).Right,
+                                              Code,
+                                              Cut,
+                                              Limit - 1,
+                                              Next,
+                                              Code (Limit).Next_2)),
+                    when Repeat_Node                        =>
+                      (for some Cut in Base .. Limit =>
+                         (for some Middle in 0 .. Cut =>
+                            Tail_Shape
+                              (Nodes,
+                               Nodes (Id).Left,
+                               Code,
+                               Base,
+                               Cut,
+                               Next,
+                               Middle,
+                               (if Nodes (Id).Unlimited
+                                then 0
+                                else Nodes (Id).High - Nodes (Id).Low),
+                               Nodes (Id).Unlimited)
+                            and then Copies_Shape
+                                       (Nodes,
+                                        Nodes (Id).Left,
+                                        Code,
+                                        Cut,
+                                        Limit,
+                                        Middle,
+                                        Entry_State,
+                                        Nodes (Id).Low)))))
    is
    begin
       null;
    end Reveal_Shape;
 
    procedure Reveal_Copies
-     (Nodes : Tree; Id : Live_Node; Code : Code_Array;
-      Base, Limit, Next, Entry_State : State_Id; Count : Natural)
-   with Ghost => Static,
-     Pre => Tree_Valid (Nodes) and then Copies_Shape
-       (Nodes, Id, Code, Base, Limit, Next, Entry_State, Count),
-     Post => (Base <= Limit and then Next <= Base and then Entry_State <= Limit
-       and then (if Count = 0 then Base = Limit and Entry_State = Next
-       else (for some Cut in Base .. Limit =>
-         (for some Middle in 0 .. Cut =>
-            Copies_Shape (Nodes, Id, Code, Base, Cut, Next, Middle, Count - 1)
-            and then Compiled_Shape (Nodes, Id, Code, Cut, Limit, Middle, Entry_State)))))
+     (Nodes                          : Tree;
+      Id                             : Live_Node;
+      Code                           : Code_Array;
+      Base, Limit, Next, Entry_State : State_Id;
+      Count                          : Natural)
+   with
+     Ghost => Static,
+     Pre   =>
+       Tree_Valid (Nodes)
+       and then Copies_Shape
+                  (Nodes, Id, Code, Base, Limit, Next, Entry_State, Count),
+     Post  =>
+       (Base <= Limit
+        and then Next <= Base
+        and then Entry_State <= Limit
+        and then (if Count = 0
+                  then Base = Limit and Entry_State = Next
+                  else
+                    (for some Cut in Base .. Limit =>
+                       (for some Middle in 0 .. Cut =>
+                          Copies_Shape
+                            (Nodes,
+                             Id,
+                             Code,
+                             Base,
+                             Cut,
+                             Next,
+                             Middle,
+                             Count - 1)
+                          and then Compiled_Shape
+                                     (Nodes,
+                                      Id,
+                                      Code,
+                                      Cut,
+                                      Limit,
+                                      Middle,
+                                      Entry_State)))))
    is
    begin
       null;
    end Reveal_Copies;
 
    procedure Lemma_Shape_Frame
-     (Nodes : Tree; Id : Live_Node; Before, After : Code_Array;
+     (Nodes                          : Tree;
+      Id                             : Live_Node;
+      Before, After                  : Code_Array;
       Base, Limit, Next, Entry_State : State_Id)
-   with Ghost => Static,
-     Pre => Tree_Valid (Nodes) and then Base <= Limit
-       and then (for all K in 1 .. Limit => (if K > Base then Before (K) = After (K))),
-     Post => Compiled_Shape (Nodes, Id, Before, Base, Limit, Next, Entry_State) = Compiled_Shape (Nodes, Id, After, Base, Limit, Next, Entry_State),
+   with
+     Ghost              => Static,
+     Pre                =>
+       Tree_Valid (Nodes)
+       and then Base <= Limit
+       and then (for all K in 1 .. Limit =>
+                   (if K > Base then Before (K) = After (K))),
+     Post               =>
+       Compiled_Shape (Nodes, Id, Before, Base, Limit, Next, Entry_State)
+       = Compiled_Shape (Nodes, Id, After, Base, Limit, Next, Entry_State),
      Subprogram_Variant =>
-       (Decreases => Id, Decreases => Natural'(0), Decreases => Natural'(0),
+       (Decreases => Id,
+        Decreases => Natural'(0),
+        Decreases => Natural'(0),
         Decreases => Natural'(2));
 
    procedure Lemma_Copies_Frame
-     (Nodes : Tree; Id : Live_Node; Before, After : Code_Array;
-      Base, Limit, Next, Entry_State : State_Id; Count : Natural)
-   with Ghost => Static,
-     Pre => Tree_Valid (Nodes) and then Base <= Limit
-       and then (for all K in 1 .. Limit => (if K > Base then Before (K) = After (K))),
-     Post => Copies_Shape (Nodes, Id, Before, Base, Limit, Next, Entry_State, Count) = Copies_Shape (Nodes, Id, After, Base, Limit, Next, Entry_State, Count),
+     (Nodes                          : Tree;
+      Id                             : Live_Node;
+      Before, After                  : Code_Array;
+      Base, Limit, Next, Entry_State : State_Id;
+      Count                          : Natural)
+   with
+     Ghost              => Static,
+     Pre                =>
+       Tree_Valid (Nodes)
+       and then Base <= Limit
+       and then (for all K in 1 .. Limit =>
+                   (if K > Base then Before (K) = After (K))),
+     Post               =>
+       Copies_Shape (Nodes, Id, Before, Base, Limit, Next, Entry_State, Count)
+       = Copies_Shape
+           (Nodes, Id, After, Base, Limit, Next, Entry_State, Count),
      Subprogram_Variant =>
-       (Decreases => Id, Decreases => Natural'(1), Decreases => Count,
+       (Decreases => Id,
+        Decreases => Natural'(1),
+        Decreases => Count,
         Decreases => Natural'(2));
 
    procedure Lemma_Optional_Frame
-     (Nodes : Tree; Id : Live_Node; Before, After : Code_Array;
-      Base, Limit, Next, Entry_State : State_Id; Count : Natural)
-   with Ghost => Static,
-     Pre => Tree_Valid (Nodes) and then Base <= Limit
-       and then (for all K in 1 .. Limit => (if K > Base then Before (K) = After (K))),
-     Post => Optional_Shape (Nodes, Id, Before, Base, Limit, Next, Entry_State, Count) = Optional_Shape (Nodes, Id, After, Base, Limit, Next, Entry_State, Count),
+     (Nodes                          : Tree;
+      Id                             : Live_Node;
+      Before, After                  : Code_Array;
+      Base, Limit, Next, Entry_State : State_Id;
+      Count                          : Natural)
+   with
+     Ghost              => Static,
+     Pre                =>
+       Tree_Valid (Nodes)
+       and then Base <= Limit
+       and then (for all K in 1 .. Limit =>
+                   (if K > Base then Before (K) = After (K))),
+     Post               =>
+       Optional_Shape
+         (Nodes, Id, Before, Base, Limit, Next, Entry_State, Count)
+       = Optional_Shape
+           (Nodes, Id, After, Base, Limit, Next, Entry_State, Count),
      Subprogram_Variant =>
-       (Decreases => Id, Decreases => Natural'(1), Decreases => Count,
+       (Decreases => Id,
+        Decreases => Natural'(1),
+        Decreases => Count,
         Decreases => Natural'(2));
 
    procedure Lemma_Tail_Frame
-     (Nodes : Tree; Id : Live_Node; Before, After : Code_Array;
-      Base, Limit, Next, Entry_State : State_Id; Count : Natural; Unlimited : Boolean)
-   with Ghost => Static,
-     Pre => Tree_Valid (Nodes) and then Base <= Limit
-       and then (for all K in 1 .. Limit => (if K > Base then Before (K) = After (K))),
-     Post => Tail_Shape (Nodes, Id, Before, Base, Limit, Next, Entry_State, Count, Unlimited) = Tail_Shape (Nodes, Id, After, Base, Limit, Next, Entry_State, Count, Unlimited),
+     (Nodes                          : Tree;
+      Id                             : Live_Node;
+      Before, After                  : Code_Array;
+      Base, Limit, Next, Entry_State : State_Id;
+      Count                          : Natural;
+      Unlimited                      : Boolean)
+   with
+     Ghost              => Static,
+     Pre                =>
+       Tree_Valid (Nodes)
+       and then Base <= Limit
+       and then (for all K in 1 .. Limit =>
+                   (if K > Base then Before (K) = After (K))),
+     Post               =>
+       Tail_Shape
+         (Nodes, Id, Before, Base, Limit, Next, Entry_State, Count, Unlimited)
+       = Tail_Shape
+           (Nodes,
+            Id,
+            After,
+            Base,
+            Limit,
+            Next,
+            Entry_State,
+            Count,
+            Unlimited),
      Subprogram_Variant =>
-       (Decreases => Id, Decreases => Natural'(2), Decreases => Count,
+       (Decreases => Id,
+        Decreases => Natural'(2),
+        Decreases => Count,
         Decreases => Natural'(2));
 
    procedure Lemma_Shape_Preserve
-     (Nodes : Tree; Id : Live_Node; Before, After : Code_Array;
+     (Nodes                          : Tree;
+      Id                             : Live_Node;
+      Before, After                  : Code_Array;
       Base, Limit, Next, Entry_State : State_Id)
-   with Ghost => Static,
-     Pre => Tree_Valid (Nodes) and then Base <= Limit
-       and then (for all K in 1 .. Limit => (if K > Base then Before (K) = After (K)))
-       and then Compiled_Shape (Nodes, Id, Before, Base, Limit, Next, Entry_State),
-     Post => Compiled_Shape (Nodes, Id, After, Base, Limit, Next, Entry_State),
+   with
+     Ghost              => Static,
+     Pre                =>
+       Tree_Valid (Nodes)
+       and then Base <= Limit
+       and then (for all K in 1 .. Limit =>
+                   (if K > Base then Before (K) = After (K)))
+       and then Compiled_Shape
+                  (Nodes, Id, Before, Base, Limit, Next, Entry_State),
+     Post               =>
+       Compiled_Shape (Nodes, Id, After, Base, Limit, Next, Entry_State),
      Subprogram_Variant =>
-       (Decreases => Id, Decreases => Natural'(0), Decreases => Natural'(0),
+       (Decreases => Id,
+        Decreases => Natural'(0),
+        Decreases => Natural'(0),
         Decreases => Natural'(1));
 
    procedure Lemma_Copies_Preserve
-     (Nodes : Tree; Id : Live_Node; Before, After : Code_Array;
-      Base, Limit, Next, Entry_State : State_Id; Count : Natural)
-   with Ghost => Static,
-     Pre => Tree_Valid (Nodes) and then Base <= Limit
-       and then (for all K in 1 .. Limit => (if K > Base then Before (K) = After (K)))
-       and then Copies_Shape (Nodes, Id, Before, Base, Limit, Next, Entry_State, Count),
-     Post => Copies_Shape (Nodes, Id, After, Base, Limit, Next, Entry_State, Count),
+     (Nodes                          : Tree;
+      Id                             : Live_Node;
+      Before, After                  : Code_Array;
+      Base, Limit, Next, Entry_State : State_Id;
+      Count                          : Natural)
+   with
+     Ghost              => Static,
+     Pre                =>
+       Tree_Valid (Nodes)
+       and then Base <= Limit
+       and then (for all K in 1 .. Limit =>
+                   (if K > Base then Before (K) = After (K)))
+       and then Copies_Shape
+                  (Nodes, Id, Before, Base, Limit, Next, Entry_State, Count),
+     Post               =>
+       Copies_Shape (Nodes, Id, After, Base, Limit, Next, Entry_State, Count),
      Subprogram_Variant =>
-       (Decreases => Id, Decreases => Natural'(1), Decreases => Count,
+       (Decreases => Id,
+        Decreases => Natural'(1),
+        Decreases => Count,
         Decreases => Natural'(1));
 
    procedure Lemma_Optional_Preserve
-     (Nodes : Tree; Id : Live_Node; Before, After : Code_Array;
-      Base, Limit, Next, Entry_State : State_Id; Count : Natural)
-   with Ghost => Static,
-     Pre => Tree_Valid (Nodes) and then Base <= Limit
-       and then (for all K in 1 .. Limit => (if K > Base then Before (K) = After (K)))
-       and then Optional_Shape (Nodes, Id, Before, Base, Limit, Next, Entry_State, Count),
-     Post => Optional_Shape (Nodes, Id, After, Base, Limit, Next, Entry_State, Count),
+     (Nodes                          : Tree;
+      Id                             : Live_Node;
+      Before, After                  : Code_Array;
+      Base, Limit, Next, Entry_State : State_Id;
+      Count                          : Natural)
+   with
+     Ghost              => Static,
+     Pre                =>
+       Tree_Valid (Nodes)
+       and then Base <= Limit
+       and then (for all K in 1 .. Limit =>
+                   (if K > Base then Before (K) = After (K)))
+       and then Optional_Shape
+                  (Nodes, Id, Before, Base, Limit, Next, Entry_State, Count),
+     Post               =>
+       Optional_Shape
+         (Nodes, Id, After, Base, Limit, Next, Entry_State, Count),
      Subprogram_Variant =>
-       (Decreases => Id, Decreases => Natural'(1), Decreases => Count,
+       (Decreases => Id,
+        Decreases => Natural'(1),
+        Decreases => Count,
         Decreases => Natural'(1));
 
    procedure Lemma_Tail_Preserve
-     (Nodes : Tree; Id : Live_Node; Before, After : Code_Array;
-      Base, Limit, Next, Entry_State : State_Id; Count : Natural; Unlimited : Boolean)
-   with Ghost => Static,
-     Pre => Tree_Valid (Nodes) and then Base <= Limit
-       and then (for all K in 1 .. Limit => (if K > Base then Before (K) = After (K)))
-       and then Tail_Shape (Nodes, Id, Before, Base, Limit, Next, Entry_State, Count, Unlimited),
-     Post => Tail_Shape (Nodes, Id, After, Base, Limit, Next, Entry_State, Count, Unlimited),
+     (Nodes                          : Tree;
+      Id                             : Live_Node;
+      Before, After                  : Code_Array;
+      Base, Limit, Next, Entry_State : State_Id;
+      Count                          : Natural;
+      Unlimited                      : Boolean)
+   with
+     Ghost              => Static,
+     Pre                =>
+       Tree_Valid (Nodes)
+       and then Base <= Limit
+       and then (for all K in 1 .. Limit =>
+                   (if K > Base then Before (K) = After (K)))
+       and then Tail_Shape
+                  (Nodes,
+                   Id,
+                   Before,
+                   Base,
+                   Limit,
+                   Next,
+                   Entry_State,
+                   Count,
+                   Unlimited),
+     Post               =>
+       Tail_Shape
+         (Nodes, Id, After, Base, Limit, Next, Entry_State, Count, Unlimited),
      Subprogram_Variant =>
-       (Decreases => Id, Decreases => Natural'(2), Decreases => Count,
+       (Decreases => Id,
+        Decreases => Natural'(2),
+        Decreases => Count,
         Decreases => Natural'(1));
 
    procedure Lemma_Copies_Join
-     (Nodes : Tree; Id : Live_Node; Code : Code_Array;
-      Base, Cut, Limit, Next, Middle, Entry_State : State_Id; Count : Positive)
-   with Ghost => Static,
-     Pre => Tree_Valid (Nodes) and then Base <= Cut and then Cut <= Limit
-       and then Next <= Base and then Middle <= Cut and then Entry_State <= Limit
-       and then Copies_Shape (Nodes, Id, Code, Base, Cut, Next, Middle, Count - 1)
-       and then Compiled_Shape (Nodes, Id, Code, Cut, Limit, Middle, Entry_State),
-     Post => Copies_Shape (Nodes, Id, Code, Base, Limit, Next, Entry_State, Count)
+     (Nodes                                       : Tree;
+      Id                                          : Live_Node;
+      Code                                        : Code_Array;
+      Base, Cut, Limit, Next, Middle, Entry_State : State_Id;
+      Count                                       : Positive)
+   with
+     Ghost => Static,
+     Pre   =>
+       Tree_Valid (Nodes)
+       and then Base <= Cut
+       and then Cut <= Limit
+       and then Next <= Base
+       and then Middle <= Cut
+       and then Entry_State <= Limit
+       and then Copies_Shape
+                  (Nodes, Id, Code, Base, Cut, Next, Middle, Count - 1)
+       and then Compiled_Shape
+                  (Nodes, Id, Code, Cut, Limit, Middle, Entry_State),
+     Post  =>
+       Copies_Shape (Nodes, Id, Code, Base, Limit, Next, Entry_State, Count)
    is
    begin
-      pragma Assert (for some M in 0 .. Cut =>
-        Copies_Shape (Nodes, Id, Code, Base, Cut, Next, M, Count - 1)
-        and then Compiled_Shape (Nodes, Id, Code, Cut, Limit, M, Entry_State));
-      pragma Assert_And_Cut
-        (Tree_Valid (Nodes) and then Base <= Limit and then Next <= Base
-         and then Entry_State <= Limit and then Count > 0
-         and then (for some C in Base .. Limit =>
-           (for some M in 0 .. C =>
-              Copies_Shape (Nodes, Id, Code, Base, C, Next, M, Count - 1)
-              and then Compiled_Shape (Nodes, Id, Code, C, Limit, M, Entry_State))));
+      pragma
+        Assert
+          (for some M in 0 .. Cut =>
+             Copies_Shape (Nodes, Id, Code, Base, Cut, Next, M, Count - 1)
+             and then Compiled_Shape
+                        (Nodes, Id, Code, Cut, Limit, M, Entry_State));
+      pragma
+        Assert_And_Cut
+          (Tree_Valid (Nodes)
+             and then Base <= Limit
+             and then Next <= Base
+             and then Entry_State <= Limit
+             and then Count > 0
+             and then (for some C in Base .. Limit =>
+                         (for some M in 0 .. C =>
+                            Copies_Shape
+                              (Nodes, Id, Code, Base, C, Next, M, Count - 1)
+                            and then Compiled_Shape
+                                       (Nodes,
+                                        Id,
+                                        Code,
+                                        C,
+                                        Limit,
+                                        M,
+                                        Entry_State))));
    end Lemma_Copies_Join;
 
    procedure Lemma_Concat_Join
-     (Nodes : Tree; Id : Live_Node; Code : Code_Array;
+     (Nodes                                       : Tree;
+      Id                                          : Live_Node;
+      Code                                        : Code_Array;
       Base, Cut, Limit, Next, Middle, Entry_State : State_Id)
-   with Ghost => Static,
-     Pre => Tree_Valid (Nodes) and then Nodes (Id).Kind = Concat_Node
-       and then Base <= Cut and then Cut <= Limit
-       and then Next <= Base and then Middle <= Cut and then Entry_State <= Limit
+   with
+     Ghost => Static,
+     Pre   =>
+       Tree_Valid (Nodes)
+       and then Nodes (Id).Kind = Concat_Node
+       and then Base <= Cut
+       and then Cut <= Limit
+       and then Next <= Base
+       and then Middle <= Cut
+       and then Entry_State <= Limit
        and then Compiled_Shape
-         (Nodes, Nodes (Id).Right, Code, Base, Cut, Next, Middle)
+                  (Nodes, Nodes (Id).Right, Code, Base, Cut, Next, Middle)
        and then Compiled_Shape
-         (Nodes, Nodes (Id).Left, Code, Cut, Limit, Middle, Entry_State),
-     Post => Compiled_Shape (Nodes, Id, Code, Base, Limit, Next, Entry_State)
+                  (Nodes,
+                   Nodes (Id).Left,
+                   Code,
+                   Cut,
+                   Limit,
+                   Middle,
+                   Entry_State),
+     Post  => Compiled_Shape (Nodes, Id, Code, Base, Limit, Next, Entry_State)
    is
    begin
-      pragma Assert (for some M in 0 .. Cut =>
-        Compiled_Shape (Nodes, Nodes (Id).Right, Code, Base, Cut, Next, M)
-        and then Compiled_Shape (Nodes, Nodes (Id).Left, Code, Cut, Limit, M, Entry_State));
+      pragma
+        Assert
+          (for some M in 0 .. Cut =>
+             Compiled_Shape (Nodes, Nodes (Id).Right, Code, Base, Cut, Next, M)
+             and then Compiled_Shape
+                        (Nodes,
+                         Nodes (Id).Left,
+                         Code,
+                         Cut,
+                         Limit,
+                         M,
+                         Entry_State));
    end Lemma_Concat_Join;
 
    procedure Lemma_Repeat_Join
-     (Nodes : Tree; Id : Live_Node; Code : Code_Array;
+     (Nodes                                       : Tree;
+      Id                                          : Live_Node;
+      Code                                        : Code_Array;
       Base, Cut, Limit, Next, Middle, Entry_State : State_Id)
-   with Ghost => Static,
-     Pre => Tree_Valid (Nodes) and then Nodes (Id).Kind = Repeat_Node
-       and then Base <= Cut and then Cut <= Limit
-       and then Next <= Base and then Middle <= Cut and then Entry_State <= Limit
+   with
+     Ghost => Static,
+     Pre   =>
+       Tree_Valid (Nodes)
+       and then Nodes (Id).Kind = Repeat_Node
+       and then Base <= Cut
+       and then Cut <= Limit
+       and then Next <= Base
+       and then Middle <= Cut
+       and then Entry_State <= Limit
        and then Tail_Shape
-         (Nodes, Nodes (Id).Left, Code, Base, Cut, Next, Middle,
-          (if Nodes (Id).Unlimited then 0 else Nodes (Id).High - Nodes (Id).Low), Nodes (Id).Unlimited)
+                  (Nodes,
+                   Nodes (Id).Left,
+                   Code,
+                   Base,
+                   Cut,
+                   Next,
+                   Middle,
+                   (if Nodes (Id).Unlimited
+                    then 0
+                    else Nodes (Id).High - Nodes (Id).Low),
+                   Nodes (Id).Unlimited)
        and then Copies_Shape
-         (Nodes, Nodes (Id).Left, Code, Cut, Limit, Middle, Entry_State, Nodes (Id).Low),
-     Post => Compiled_Shape (Nodes, Id, Code, Base, Limit, Next, Entry_State)
+                  (Nodes,
+                   Nodes (Id).Left,
+                   Code,
+                   Cut,
+                   Limit,
+                   Middle,
+                   Entry_State,
+                   Nodes (Id).Low),
+     Post  => Compiled_Shape (Nodes, Id, Code, Base, Limit, Next, Entry_State)
    is
       --  The child certificates are only carried into the repetition case,
       --  never inspected, so their definitions are pruned here.
-      pragma Annotate
-        (GNATprove, Hide_Info, "Expression_Function_Body", Tail_Shape);
-      pragma Annotate
-        (GNATprove, Hide_Info, "Expression_Function_Body", Copies_Shape);
-      pragma Annotate
-        (GNATprove, Hide_Info, "Expression_Function_Body", Optional_Shape);
+      pragma
+        Annotate
+          (GNATprove, Hide_Info, "Expression_Function_Body", Tail_Shape);
+      pragma
+        Annotate
+          (GNATprove, Hide_Info, "Expression_Function_Body", Copies_Shape);
+      pragma
+        Annotate
+          (GNATprove, Hide_Info, "Expression_Function_Body", Optional_Shape);
    begin
-      pragma Assert (for some M in 0 .. Cut =>
-        Tail_Shape
-          (Nodes, Nodes (Id).Left, Code, Base, Cut, Next, M,
-           (if Nodes (Id).Unlimited then 0 else Nodes (Id).High - Nodes (Id).Low), Nodes (Id).Unlimited)
-        and then Copies_Shape
-          (Nodes, Nodes (Id).Left, Code, Cut, Limit, M, Entry_State, Nodes (Id).Low));
+      pragma
+        Assert
+          (for some M in 0 .. Cut =>
+             Tail_Shape
+               (Nodes,
+                Nodes (Id).Left,
+                Code,
+                Base,
+                Cut,
+                Next,
+                M,
+                (if Nodes (Id).Unlimited
+                 then 0
+                 else Nodes (Id).High - Nodes (Id).Low),
+                Nodes (Id).Unlimited)
+             and then Copies_Shape
+                        (Nodes,
+                         Nodes (Id).Left,
+                         Code,
+                         Cut,
+                         Limit,
+                         M,
+                         Entry_State,
+                         Nodes (Id).Low));
       --  Witness the outer cut with Cut, so that folding into the repetition
       --  certificate is a single instantiation rather than a search.
-      pragma Assert
-        (for some C in Base .. Limit =>
-           (for some M in 0 .. C =>
-              Tail_Shape
-                (Nodes, Nodes (Id).Left, Code, Base, C, Next, M,
-                 (if Nodes (Id).Unlimited then 0
-                  else Nodes (Id).High - Nodes (Id).Low),
-                 Nodes (Id).Unlimited)
-              and then Copies_Shape
-                (Nodes, Nodes (Id).Left, Code, C, Limit, M, Entry_State,
-                 Nodes (Id).Low)));
+      pragma
+        Assert
+          (for some C in Base .. Limit =>
+             (for some M in 0 .. C =>
+                Tail_Shape
+                  (Nodes,
+                   Nodes (Id).Left,
+                   Code,
+                   Base,
+                   C,
+                   Next,
+                   M,
+                   (if Nodes (Id).Unlimited
+                    then 0
+                    else Nodes (Id).High - Nodes (Id).Low),
+                   Nodes (Id).Unlimited)
+                and then Copies_Shape
+                           (Nodes,
+                            Nodes (Id).Left,
+                            Code,
+                            C,
+                            Limit,
+                            M,
+                            Entry_State,
+                            Nodes (Id).Low)));
    end Lemma_Repeat_Join;
 
    --  Concatenation and repetition preservation are split out so that each
@@ -896,16 +1316,26 @@ package body Spark_Re_Trees.Matching with SPARK_Mode is
    --  alternation cases below still need them unfolded, and information
    --  hiding is decided per verified entity, not per branch.
    procedure Lemma_Concat_Preserve
-     (Nodes : Tree; Id : Live_Node; Before, After : Code_Array;
+     (Nodes                          : Tree;
+      Id                             : Live_Node;
+      Before, After                  : Code_Array;
       Base, Limit, Next, Entry_State : State_Id)
-   with Ghost => Static,
-     Pre => Tree_Valid (Nodes) and then Base <= Limit
+   with
+     Ghost              => Static,
+     Pre                =>
+       Tree_Valid (Nodes)
+       and then Base <= Limit
        and then Nodes (Id).Kind = Concat_Node
-       and then (for all K in 1 .. Limit => (if K > Base then Before (K) = After (K)))
-       and then Compiled_Shape (Nodes, Id, Before, Base, Limit, Next, Entry_State),
-     Post => Compiled_Shape (Nodes, Id, After, Base, Limit, Next, Entry_State),
+       and then (for all K in 1 .. Limit =>
+                   (if K > Base then Before (K) = After (K)))
+       and then Compiled_Shape
+                  (Nodes, Id, Before, Base, Limit, Next, Entry_State),
+     Post               =>
+       Compiled_Shape (Nodes, Id, After, Base, Limit, Next, Entry_State),
      Subprogram_Variant =>
-       (Decreases => Id, Decreases => Natural'(0), Decreases => Natural'(0),
+       (Decreases => Id,
+        Decreases => Natural'(0),
+        Decreases => Natural'(0),
         Decreases => Natural'(0))
    is
       --  This search reasons only about the certificates' quantifier structure:
@@ -913,88 +1343,297 @@ package body Spark_Re_Trees.Matching with SPARK_Mode is
       --  by the frame and join lemmas' contracts. Pruning the recursive
       --  definition keeps the nested existential from being re-instantiated
       --  under the enclosing universal invariant.
-      pragma Annotate
-        (GNATprove, Hide_Info, "Expression_Function_Body", Compiled_Shape);
+      pragma
+        Annotate
+          (GNATprove, Hide_Info, "Expression_Function_Body", Compiled_Shape);
    begin
       Reveal_Shape (Nodes, Id, Before, Base, Limit, Next, Entry_State);
-         for Cut in Base .. Limit loop
-            if (for some M in 0 .. Cut => Compiled_Shape (Nodes, Nodes (Id).Right, Before, Base, Cut, Next, M) and then Compiled_Shape (Nodes, Nodes (Id).Left, Before, Cut, Limit, M, Entry_State)) then
+      for Cut in Base .. Limit loop
+         if (for some M in 0 .. Cut =>
+               Compiled_Shape
+                 (Nodes, Nodes (Id).Right, Before, Base, Cut, Next, M)
+               and then Compiled_Shape
+                          (Nodes,
+                           Nodes (Id).Left,
+                           Before,
+                           Cut,
+                           Limit,
+                           M,
+                           Entry_State))
+         then
             for Middle in 0 .. Cut loop
-               if Compiled_Shape (Nodes, Nodes (Id).Right, Before, Base, Cut, Next, Middle) and then Compiled_Shape (Nodes, Nodes (Id).Left, Before, Cut, Limit, Middle, Entry_State) then
-                  Lemma_Shape_Frame (Nodes, Nodes (Id).Right, Before, After, Base, Cut, Next, Middle);
-                  Lemma_Shape_Frame (Nodes, Nodes (Id).Left, Before, After, Cut, Limit, Middle, Entry_State);
-                  Lemma_Concat_Join (Nodes, Id, After, Base, Cut, Limit, Next, Middle, Entry_State);
+               if Compiled_Shape
+                    (Nodes, Nodes (Id).Right, Before, Base, Cut, Next, Middle)
+                 and then Compiled_Shape
+                            (Nodes,
+                             Nodes (Id).Left,
+                             Before,
+                             Cut,
+                             Limit,
+                             Middle,
+                             Entry_State)
+               then
+                  Lemma_Shape_Frame
+                    (Nodes,
+                     Nodes (Id).Right,
+                     Before,
+                     After,
+                     Base,
+                     Cut,
+                     Next,
+                     Middle);
+                  Lemma_Shape_Frame
+                    (Nodes,
+                     Nodes (Id).Left,
+                     Before,
+                     After,
+                     Cut,
+                     Limit,
+                     Middle,
+                     Entry_State);
+                  Lemma_Concat_Join
+                    (Nodes,
+                     Id,
+                     After,
+                     Base,
+                     Cut,
+                     Limit,
+                     Next,
+                     Middle,
+                     Entry_State);
                   return;
                end if;
-               pragma Loop_Invariant (for all M in 0 .. Middle => not (Compiled_Shape (Nodes, Nodes (Id).Right, Before, Base, Cut, Next, M) and then Compiled_Shape (Nodes, Nodes (Id).Left, Before, Cut, Limit, M, Entry_State)));
+               pragma
+                 Loop_Invariant
+                   (for all M in 0 .. Middle =>
+                      not (Compiled_Shape
+                             (Nodes,
+                              Nodes (Id).Right,
+                              Before,
+                              Base,
+                              Cut,
+                              Next,
+                              M)
+                           and then Compiled_Shape
+                                      (Nodes,
+                                       Nodes (Id).Left,
+                                       Before,
+                                       Cut,
+                                       Limit,
+                                       M,
+                                       Entry_State)));
             end loop;
             pragma Assert (False);
-            end if;
-            pragma Loop_Invariant (for some C in Base .. Limit => (for some M in 0 .. C => Compiled_Shape (Nodes, Nodes (Id).Right, Before, Base, C, Next, M) and then Compiled_Shape (Nodes, Nodes (Id).Left, Before, C, Limit, M, Entry_State)));
-            --  Keep the negated witness in the same form as the guard.
-            --  Each visited cut has no middle state joining the children.
-            pragma Loop_Invariant
-              (for all C in Base .. Cut =>
-                 not (for some M in 0 .. C =>
+         end if;
+         pragma
+           Loop_Invariant
+             (for some C in Base .. Limit =>
+                (for some M in 0 .. C =>
                    Compiled_Shape
                      (Nodes, Nodes (Id).Right, Before, Base, C, Next, M)
                    and then Compiled_Shape
-                     (Nodes, Nodes (Id).Left, Before, C, Limit, M, Entry_State)));
-         end loop;
-         pragma Assert (False);
+                              (Nodes,
+                               Nodes (Id).Left,
+                               Before,
+                               C,
+                               Limit,
+                               M,
+                               Entry_State)));
+         --  Keep the negated witness in the same form as the guard.
+         --  Each visited cut has no middle state joining the children.
+         pragma
+           Loop_Invariant
+             (for all C in Base .. Cut =>
+                not (for some M in 0 .. C =>
+                       Compiled_Shape
+                         (Nodes, Nodes (Id).Right, Before, Base, C, Next, M)
+                       and then Compiled_Shape
+                                  (Nodes,
+                                   Nodes (Id).Left,
+                                   Before,
+                                   C,
+                                   Limit,
+                                   M,
+                                   Entry_State)));
+      end loop;
+      pragma Assert (False);
    end Lemma_Concat_Preserve;
 
    procedure Lemma_Repeat_Preserve
-     (Nodes : Tree; Id : Live_Node; Before, After : Code_Array;
+     (Nodes                          : Tree;
+      Id                             : Live_Node;
+      Before, After                  : Code_Array;
       Base, Limit, Next, Entry_State : State_Id)
-   with Ghost => Static,
-     Pre => Tree_Valid (Nodes) and then Base <= Limit
+   with
+     Ghost              => Static,
+     Pre                =>
+       Tree_Valid (Nodes)
+       and then Base <= Limit
        and then Nodes (Id).Kind = Repeat_Node
-       and then (for all K in 1 .. Limit => (if K > Base then Before (K) = After (K)))
-       and then Compiled_Shape (Nodes, Id, Before, Base, Limit, Next, Entry_State),
-     Post => Compiled_Shape (Nodes, Id, After, Base, Limit, Next, Entry_State),
+       and then (for all K in 1 .. Limit =>
+                   (if K > Base then Before (K) = After (K)))
+       and then Compiled_Shape
+                  (Nodes, Id, Before, Base, Limit, Next, Entry_State),
+     Post               =>
+       Compiled_Shape (Nodes, Id, After, Base, Limit, Next, Entry_State),
      Subprogram_Variant =>
-       (Decreases => Id, Decreases => Natural'(0), Decreases => Natural'(0),
+       (Decreases => Id,
+        Decreases => Natural'(0),
+        Decreases => Natural'(0),
         Decreases => Natural'(0))
    is
       --  As for concatenation: the repetition certificates are carried, never
       --  unfolded, so their definitions are pruned here.
-      pragma Annotate
-        (GNATprove, Hide_Info, "Expression_Function_Body", Compiled_Shape);
-      pragma Annotate
-        (GNATprove, Hide_Info, "Expression_Function_Body", Copies_Shape);
-      pragma Annotate
-        (GNATprove, Hide_Info, "Expression_Function_Body", Optional_Shape);
-      pragma Annotate
-        (GNATprove, Hide_Info, "Expression_Function_Body", Tail_Shape);
+      pragma
+        Annotate
+          (GNATprove, Hide_Info, "Expression_Function_Body", Compiled_Shape);
+      pragma
+        Annotate
+          (GNATprove, Hide_Info, "Expression_Function_Body", Copies_Shape);
+      pragma
+        Annotate
+          (GNATprove, Hide_Info, "Expression_Function_Body", Optional_Shape);
+      pragma
+        Annotate
+          (GNATprove, Hide_Info, "Expression_Function_Body", Tail_Shape);
    begin
       Reveal_Shape (Nodes, Id, Before, Base, Limit, Next, Entry_State);
-         for Cut in Base .. Limit loop
-            if (for some M in 0 .. Cut => Tail_Shape (Nodes, Nodes (Id).Left, Before, Base, Cut, Next, M, (if Nodes (Id).Unlimited then 0 else Nodes (Id).High - Nodes (Id).Low), Nodes (Id).Unlimited) and then Copies_Shape (Nodes, Nodes (Id).Left, Before, Cut, Limit, M, Entry_State, Nodes (Id).Low)) then
+      for Cut in Base .. Limit loop
+         if (for some M in 0 .. Cut =>
+               Tail_Shape
+                 (Nodes,
+                  Nodes (Id).Left,
+                  Before,
+                  Base,
+                  Cut,
+                  Next,
+                  M,
+                  (if Nodes (Id).Unlimited
+                   then 0
+                   else Nodes (Id).High - Nodes (Id).Low),
+                  Nodes (Id).Unlimited)
+               and then Copies_Shape
+                          (Nodes,
+                           Nodes (Id).Left,
+                           Before,
+                           Cut,
+                           Limit,
+                           M,
+                           Entry_State,
+                           Nodes (Id).Low))
+         then
             for Middle in 0 .. Cut loop
-               if Tail_Shape (Nodes, Nodes (Id).Left, Before, Base, Cut, Next, Middle, (if Nodes (Id).Unlimited then 0 else Nodes (Id).High - Nodes (Id).Low), Nodes (Id).Unlimited) and then Copies_Shape (Nodes, Nodes (Id).Left, Before, Cut, Limit, Middle, Entry_State, Nodes (Id).Low) then
-                  Lemma_Tail_Frame (Nodes, Nodes (Id).Left, Before, After, Base, Cut, Next, Middle, (if Nodes (Id).Unlimited then 0 else Nodes (Id).High - Nodes (Id).Low), Nodes (Id).Unlimited);
-                  Lemma_Copies_Frame (Nodes, Nodes (Id).Left, Before, After, Cut, Limit, Middle, Entry_State, Nodes (Id).Low);
-                  Lemma_Repeat_Join (Nodes, Id, After, Base, Cut, Limit, Next, Middle, Entry_State);
+               if Tail_Shape
+                    (Nodes,
+                     Nodes (Id).Left,
+                     Before,
+                     Base,
+                     Cut,
+                     Next,
+                     Middle,
+                     (if Nodes (Id).Unlimited
+                      then 0
+                      else Nodes (Id).High - Nodes (Id).Low),
+                     Nodes (Id).Unlimited)
+                 and then Copies_Shape
+                            (Nodes,
+                             Nodes (Id).Left,
+                             Before,
+                             Cut,
+                             Limit,
+                             Middle,
+                             Entry_State,
+                             Nodes (Id).Low)
+               then
+                  Lemma_Tail_Frame
+                    (Nodes,
+                     Nodes (Id).Left,
+                     Before,
+                     After,
+                     Base,
+                     Cut,
+                     Next,
+                     Middle,
+                     (if Nodes (Id).Unlimited
+                      then 0
+                      else Nodes (Id).High - Nodes (Id).Low),
+                     Nodes (Id).Unlimited);
+                  Lemma_Copies_Frame
+                    (Nodes,
+                     Nodes (Id).Left,
+                     Before,
+                     After,
+                     Cut,
+                     Limit,
+                     Middle,
+                     Entry_State,
+                     Nodes (Id).Low);
+                  Lemma_Repeat_Join
+                    (Nodes,
+                     Id,
+                     After,
+                     Base,
+                     Cut,
+                     Limit,
+                     Next,
+                     Middle,
+                     Entry_State);
                   return;
                end if;
-               pragma Loop_Invariant (for all M in 0 .. Middle => not (Tail_Shape (Nodes, Nodes (Id).Left, Before, Base, Cut, Next, M, (if Nodes (Id).Unlimited then 0 else Nodes (Id).High - Nodes (Id).Low), Nodes (Id).Unlimited) and then Copies_Shape (Nodes, Nodes (Id).Left, Before, Cut, Limit, M, Entry_State, Nodes (Id).Low)));
+               pragma
+                 Loop_Invariant
+                   (for all M in 0 .. Middle =>
+                      not (Tail_Shape
+                             (Nodes,
+                              Nodes (Id).Left,
+                              Before,
+                              Base,
+                              Cut,
+                              Next,
+                              M,
+                              (if Nodes (Id).Unlimited
+                               then 0
+                               else Nodes (Id).High - Nodes (Id).Low),
+                              Nodes (Id).Unlimited)
+                           and then Copies_Shape
+                                      (Nodes,
+                                       Nodes (Id).Left,
+                                       Before,
+                                       Cut,
+                                       Limit,
+                                       M,
+                                       Entry_State,
+                                       Nodes (Id).Low)));
             end loop;
             pragma Assert (False);
-            end if;
-            pragma Loop_Invariant
-              (for all C in Base .. Cut =>
-                 not (for some M in 0 .. C =>
-                   Tail_Shape
-                     (Nodes, Nodes (Id).Left, Before, Base, C, Next, M,
-                      (if Nodes (Id).Unlimited then 0
-                       else Nodes (Id).High - Nodes (Id).Low),
-                      Nodes (Id).Unlimited)
-                   and then Copies_Shape
-                     (Nodes, Nodes (Id).Left, Before, C, Limit, M,
-                      Entry_State, Nodes (Id).Low)));
-         end loop;
-         pragma Assert (False);
+         end if;
+         pragma
+           Loop_Invariant
+             (for all C in Base .. Cut =>
+                not (for some M in 0 .. C =>
+                       Tail_Shape
+                         (Nodes,
+                          Nodes (Id).Left,
+                          Before,
+                          Base,
+                          C,
+                          Next,
+                          M,
+                          (if Nodes (Id).Unlimited
+                           then 0
+                           else Nodes (Id).High - Nodes (Id).Low),
+                          Nodes (Id).Unlimited)
+                       and then Copies_Shape
+                                  (Nodes,
+                                   Nodes (Id).Left,
+                                   Before,
+                                   C,
+                                   Limit,
+                                   M,
+                                   Entry_State,
+                                   Nodes (Id).Low)));
+      end loop;
+      pragma Assert (False);
    end Lemma_Repeat_Preserve;
 
    --  Alternation is split out for symmetry with the other compound cases:
@@ -1002,57 +1641,111 @@ package body Spark_Re_Trees.Matching with SPARK_Mode is
    --  each callee's, or a leaf certificate that depends only on the preserved
    --  instruction at Limit.
    procedure Lemma_Alt_Preserve
-     (Nodes : Tree; Id : Live_Node; Before, After : Code_Array;
+     (Nodes                          : Tree;
+      Id                             : Live_Node;
+      Before, After                  : Code_Array;
       Base, Limit, Next, Entry_State : State_Id)
-   with Ghost => Static,
-     Pre => Tree_Valid (Nodes) and then Base <= Limit
+   with
+     Ghost              => Static,
+     Pre                =>
+       Tree_Valid (Nodes)
+       and then Base <= Limit
        and then Nodes (Id).Kind = Alt_Node
-       and then (for all K in 1 .. Limit => (if K > Base then Before (K) = After (K)))
-       and then Compiled_Shape (Nodes, Id, Before, Base, Limit, Next, Entry_State),
-     Post => Compiled_Shape (Nodes, Id, After, Base, Limit, Next, Entry_State),
+       and then (for all K in 1 .. Limit =>
+                   (if K > Base then Before (K) = After (K)))
+       and then Compiled_Shape
+                  (Nodes, Id, Before, Base, Limit, Next, Entry_State),
+     Post               =>
+       Compiled_Shape (Nodes, Id, After, Base, Limit, Next, Entry_State),
      Subprogram_Variant =>
-       (Decreases => Id, Decreases => Natural'(0), Decreases => Natural'(0),
+       (Decreases => Id,
+        Decreases => Natural'(0),
+        Decreases => Natural'(0),
         Decreases => Natural'(0))
    is
    begin
       Reveal_Shape (Nodes, Id, Before, Base, Limit, Next, Entry_State);
-            for Cut in Base .. Limit - 1 loop
-               if Compiled_Shape
-                 (Nodes, Nodes (Id).Left, Before, Base, Cut, Next, Before (Limit).Next_1)
-                 and then Compiled_Shape
-                 (Nodes, Nodes (Id).Right, Before, Cut, Limit - 1, Next, Before (Limit).Next_2)
-               then
-                  Lemma_Shape_Frame
-                    (Nodes, Nodes (Id).Left, Before, After, Base, Cut, Next, Before (Limit).Next_1);
-                  Lemma_Shape_Frame
-                    (Nodes, Nodes (Id).Right, Before, After, Cut, Limit - 1, Next, Before (Limit).Next_2);
-                  return;
-               end if;
-               pragma Loop_Invariant (for all C in Base .. Cut => not
-                 (Compiled_Shape
-                    (Nodes, Nodes (Id).Left, Before, Base, C, Next, Before (Limit).Next_1)
-                  and then Compiled_Shape
-                    (Nodes, Nodes (Id).Right, Before, C, Limit - 1, Next, Before (Limit).Next_2)));
-            end loop;
-            pragma Assert (False);
+      for Cut in Base .. Limit - 1 loop
+         if Compiled_Shape
+              (Nodes,
+               Nodes (Id).Left,
+               Before,
+               Base,
+               Cut,
+               Next,
+               Before (Limit).Next_1)
+           and then Compiled_Shape
+                      (Nodes,
+                       Nodes (Id).Right,
+                       Before,
+                       Cut,
+                       Limit - 1,
+                       Next,
+                       Before (Limit).Next_2)
+         then
+            Lemma_Shape_Frame
+              (Nodes,
+               Nodes (Id).Left,
+               Before,
+               After,
+               Base,
+               Cut,
+               Next,
+               Before (Limit).Next_1);
+            Lemma_Shape_Frame
+              (Nodes,
+               Nodes (Id).Right,
+               Before,
+               After,
+               Cut,
+               Limit - 1,
+               Next,
+               Before (Limit).Next_2);
+            return;
+         end if;
+         pragma
+           Loop_Invariant
+             (for all C in Base .. Cut =>
+                not (Compiled_Shape
+                       (Nodes,
+                        Nodes (Id).Left,
+                        Before,
+                        Base,
+                        C,
+                        Next,
+                        Before (Limit).Next_1)
+                     and then Compiled_Shape
+                                (Nodes,
+                                 Nodes (Id).Right,
+                                 Before,
+                                 C,
+                                 Limit - 1,
+                                 Next,
+                                 Before (Limit).Next_2)));
+      end loop;
+      pragma Assert (False);
    end Lemma_Alt_Preserve;
 
    procedure Lemma_Shape_Preserve
-     (Nodes : Tree; Id : Live_Node; Before, After : Code_Array;
-      Base, Limit, Next, Entry_State : State_Id)
-   is
+     (Nodes                          : Tree;
+      Id                             : Live_Node;
+      Before, After                  : Code_Array;
+      Base, Limit, Next, Entry_State : State_Id) is
    begin
       Reveal_Shape (Nodes, Id, Before, Base, Limit, Next, Entry_State);
       case Nodes (Id).Kind is
-         when Empty_Node | Bytes_Node | Start_Node | End_Node => null;
-         when Concat_Node =>
+         when Empty_Node | Bytes_Node | Start_Node | End_Node =>
+            null;
+
+         when Concat_Node                                     =>
             Lemma_Concat_Preserve
               (Nodes, Id, Before, After, Base, Limit, Next, Entry_State);
 
-         when Alt_Node =>
+         when Alt_Node                                        =>
             Lemma_Alt_Preserve
               (Nodes, Id, Before, After, Base, Limit, Next, Entry_State);
-         when Repeat_Node =>
+
+         when Repeat_Node                                     =>
             Lemma_Repeat_Preserve
               (Nodes, Id, Before, After, Base, Limit, Next, Entry_State);
 
@@ -1060,33 +1753,116 @@ package body Spark_Re_Trees.Matching with SPARK_Mode is
    end Lemma_Shape_Preserve;
 
    procedure Lemma_Copies_Preserve
-     (Nodes : Tree; Id : Live_Node; Before, After : Code_Array;
-      Base, Limit, Next, Entry_State : State_Id; Count : Natural)
-   is
+     (Nodes                          : Tree;
+      Id                             : Live_Node;
+      Before, After                  : Code_Array;
+      Base, Limit, Next, Entry_State : State_Id;
+      Count                          : Natural) is
    begin
       Reveal_Copies (Nodes, Id, Before, Base, Limit, Next, Entry_State, Count);
       if Count > 0 then
          for Cut in Base .. Limit loop
-            if (for some M in 0 .. Cut => Copies_Shape (Nodes, Id, Before, Base, Cut, Next, M, Count - 1) and then Compiled_Shape (Nodes, Id, Before, Cut, Limit, M, Entry_State)) then
-            for Middle in 0 .. Cut loop
-               if Copies_Shape (Nodes, Id, Before, Base, Cut, Next, Middle, Count - 1) and then Compiled_Shape (Nodes, Id, Before, Cut, Limit, Middle, Entry_State) then
-                  Lemma_Copies_Frame (Nodes, Id, Before, After, Base, Cut, Next, Middle, Count - 1);
-                  Lemma_Shape_Frame (Nodes, Id, Before, After, Cut, Limit, Middle, Entry_State);
-                  Lemma_Copies_Join (Nodes, Id, After, Base, Cut, Limit, Next, Middle, Entry_State, Count);
-                  return;
-               end if;
-               pragma Loop_Invariant (for all M in 0 .. Middle => not (Copies_Shape (Nodes, Id, Before, Base, Cut, Next, M, Count - 1) and then Compiled_Shape (Nodes, Id, Before, Cut, Limit, M, Entry_State)));
-            end loop;
-            pragma Assert (False);
+            if (for some M in 0 .. Cut =>
+                  Copies_Shape
+                    (Nodes, Id, Before, Base, Cut, Next, M, Count - 1)
+                  and then Compiled_Shape
+                             (Nodes, Id, Before, Cut, Limit, M, Entry_State))
+            then
+               for Middle in 0 .. Cut loop
+                  if Copies_Shape
+                       (Nodes, Id, Before, Base, Cut, Next, Middle, Count - 1)
+                    and then Compiled_Shape
+                               (Nodes,
+                                Id,
+                                Before,
+                                Cut,
+                                Limit,
+                                Middle,
+                                Entry_State)
+                  then
+                     Lemma_Copies_Frame
+                       (Nodes,
+                        Id,
+                        Before,
+                        After,
+                        Base,
+                        Cut,
+                        Next,
+                        Middle,
+                        Count - 1);
+                     Lemma_Shape_Frame
+                       (Nodes,
+                        Id,
+                        Before,
+                        After,
+                        Cut,
+                        Limit,
+                        Middle,
+                        Entry_State);
+                     Lemma_Copies_Join
+                       (Nodes,
+                        Id,
+                        After,
+                        Base,
+                        Cut,
+                        Limit,
+                        Next,
+                        Middle,
+                        Entry_State,
+                        Count);
+                     return;
+                  end if;
+                  pragma
+                    Loop_Invariant
+                      (for all M in 0 .. Middle =>
+                         not (Copies_Shape
+                                (Nodes,
+                                 Id,
+                                 Before,
+                                 Base,
+                                 Cut,
+                                 Next,
+                                 M,
+                                 Count - 1)
+                              and then Compiled_Shape
+                                         (Nodes,
+                                          Id,
+                                          Before,
+                                          Cut,
+                                          Limit,
+                                          M,
+                                          Entry_State)));
+               end loop;
+               pragma Assert (False);
             end if;
-            pragma Loop_Invariant (for some C in Base .. Limit => (for some M in 0 .. C => Copies_Shape (Nodes, Id, Before, Base, C, Next, M, Count - 1) and then Compiled_Shape (Nodes, Id, Before, C, Limit, M, Entry_State)));
-            pragma Loop_Invariant
-              (for all C in Base .. Cut =>
-                 not (for some M in 0 .. C =>
-                   Copies_Shape
-                     (Nodes, Id, Before, Base, C, Next, M, Count - 1)
-                   and then Compiled_Shape
-                     (Nodes, Id, Before, C, Limit, M, Entry_State)));
+            pragma
+              Loop_Invariant
+                (for some C in Base .. Limit =>
+                   (for some M in 0 .. C =>
+                      Copies_Shape
+                        (Nodes, Id, Before, Base, C, Next, M, Count - 1)
+                      and then Compiled_Shape
+                                 (Nodes,
+                                  Id,
+                                  Before,
+                                  C,
+                                  Limit,
+                                  M,
+                                  Entry_State)));
+            pragma
+              Loop_Invariant
+                (for all C in Base .. Cut =>
+                   not (for some M in 0 .. C =>
+                          Copies_Shape
+                            (Nodes, Id, Before, Base, C, Next, M, Count - 1)
+                          and then Compiled_Shape
+                                     (Nodes,
+                                      Id,
+                                      Before,
+                                      C,
+                                      Limit,
+                                      M,
+                                      Entry_State)));
          end loop;
          pragma Assert (False);
 
@@ -1094,41 +1870,96 @@ package body Spark_Re_Trees.Matching with SPARK_Mode is
    end Lemma_Copies_Preserve;
 
    procedure Lemma_Optional_Preserve
-     (Nodes : Tree; Id : Live_Node; Before, After : Code_Array;
-      Base, Limit, Next, Entry_State : State_Id; Count : Natural)
-   is
+     (Nodes                          : Tree;
+      Id                             : Live_Node;
+      Before, After                  : Code_Array;
+      Base, Limit, Next, Entry_State : State_Id;
+      Count                          : Natural) is
    begin
       if Count > 0 then
          for Cut in Base .. Limit - 1 loop
             if Optional_Shape
-              (Nodes, Id, Before, Base, Cut, Next, Before (Limit).Next_2, Count - 1)
+                 (Nodes,
+                  Id,
+                  Before,
+                  Base,
+                  Cut,
+                  Next,
+                  Before (Limit).Next_2,
+                  Count - 1)
               and then Compiled_Shape
-              (Nodes, Id, Before, Cut, Limit - 1, Before (Limit).Next_2, Before (Limit).Next_1)
+                         (Nodes,
+                          Id,
+                          Before,
+                          Cut,
+                          Limit - 1,
+                          Before (Limit).Next_2,
+                          Before (Limit).Next_1)
             then
                Lemma_Optional_Frame
-                 (Nodes, Id, Before, After, Base, Cut, Next, Before (Limit).Next_2, Count - 1);
+                 (Nodes,
+                  Id,
+                  Before,
+                  After,
+                  Base,
+                  Cut,
+                  Next,
+                  Before (Limit).Next_2,
+                  Count - 1);
                Lemma_Shape_Frame
-                 (Nodes, Id, Before, After, Cut, Limit - 1, Before (Limit).Next_2, Before (Limit).Next_1);
+                 (Nodes,
+                  Id,
+                  Before,
+                  After,
+                  Cut,
+                  Limit - 1,
+                  Before (Limit).Next_2,
+                  Before (Limit).Next_1);
                return;
             end if;
-            pragma Loop_Invariant (for all C in Base .. Cut => not
-              (Optional_Shape
-                 (Nodes, Id, Before, Base, C, Next, Before (Limit).Next_2, Count - 1)
-               and then Compiled_Shape
-                 (Nodes, Id, Before, C, Limit - 1, Before (Limit).Next_2, Before (Limit).Next_1)));
+            pragma
+              Loop_Invariant
+                (for all C in Base .. Cut =>
+                   not (Optional_Shape
+                          (Nodes,
+                           Id,
+                           Before,
+                           Base,
+                           C,
+                           Next,
+                           Before (Limit).Next_2,
+                           Count - 1)
+                        and then Compiled_Shape
+                                   (Nodes,
+                                    Id,
+                                    Before,
+                                    C,
+                                    Limit - 1,
+                                    Before (Limit).Next_2,
+                                    Before (Limit).Next_1)));
          end loop;
          pragma Assert (False);
       end if;
    end Lemma_Optional_Preserve;
 
    procedure Lemma_Tail_Preserve
-     (Nodes : Tree; Id : Live_Node; Before, After : Code_Array;
-      Base, Limit, Next, Entry_State : State_Id; Count : Natural; Unlimited : Boolean)
-   is
+     (Nodes                          : Tree;
+      Id                             : Live_Node;
+      Before, After                  : Code_Array;
+      Base, Limit, Next, Entry_State : State_Id;
+      Count                          : Natural;
+      Unlimited                      : Boolean) is
    begin
       if Unlimited then
          Lemma_Shape_Frame
-           (Nodes, Id, Before, After, Entry_State, Limit, Entry_State, Before (Entry_State).Next_1);
+           (Nodes,
+            Id,
+            Before,
+            After,
+            Entry_State,
+            Limit,
+            Entry_State,
+            Before (Entry_State).Next_1);
       else
          Lemma_Optional_Frame
            (Nodes, Id, Before, After, Base, Limit, Next, Entry_State, Count);
@@ -1136,38 +1967,59 @@ package body Spark_Re_Trees.Matching with SPARK_Mode is
    end Lemma_Tail_Preserve;
 
    procedure Lemma_Shape_Frame
-     (Nodes : Tree; Id : Live_Node; Before, After : Code_Array;
-      Base, Limit, Next, Entry_State : State_Id)
-   is
+     (Nodes                          : Tree;
+      Id                             : Live_Node;
+      Before, After                  : Code_Array;
+      Base, Limit, Next, Entry_State : State_Id) is
    begin
-      if Compiled_Shape (Nodes, Id, Before, Base, Limit, Next, Entry_State) then
-         Lemma_Shape_Preserve (Nodes, Id, Before, After, Base, Limit, Next, Entry_State);
-      elsif Compiled_Shape (Nodes, Id, After, Base, Limit, Next, Entry_State) then
-         Lemma_Shape_Preserve (Nodes, Id, After, Before, Base, Limit, Next, Entry_State);
+      if Compiled_Shape (Nodes, Id, Before, Base, Limit, Next, Entry_State)
+      then
+         Lemma_Shape_Preserve
+           (Nodes, Id, Before, After, Base, Limit, Next, Entry_State);
+      elsif Compiled_Shape (Nodes, Id, After, Base, Limit, Next, Entry_State)
+      then
+         Lemma_Shape_Preserve
+           (Nodes, Id, After, Before, Base, Limit, Next, Entry_State);
       end if;
    end Lemma_Shape_Frame;
 
    procedure Lemma_Copies_Frame
-     (Nodes : Tree; Id : Live_Node; Before, After : Code_Array;
-      Base, Limit, Next, Entry_State : State_Id; Count : Natural)
-   is
+     (Nodes                          : Tree;
+      Id                             : Live_Node;
+      Before, After                  : Code_Array;
+      Base, Limit, Next, Entry_State : State_Id;
+      Count                          : Natural) is
    begin
-      if Copies_Shape (Nodes, Id, Before, Base, Limit, Next, Entry_State, Count) then
-         Lemma_Copies_Preserve (Nodes, Id, Before, After, Base, Limit, Next, Entry_State, Count);
-      elsif Copies_Shape (Nodes, Id, After, Base, Limit, Next, Entry_State, Count) then
-         Lemma_Copies_Preserve (Nodes, Id, After, Before, Base, Limit, Next, Entry_State, Count);
+      if Copies_Shape
+           (Nodes, Id, Before, Base, Limit, Next, Entry_State, Count)
+      then
+         Lemma_Copies_Preserve
+           (Nodes, Id, Before, After, Base, Limit, Next, Entry_State, Count);
+      elsif Copies_Shape
+              (Nodes, Id, After, Base, Limit, Next, Entry_State, Count)
+      then
+         Lemma_Copies_Preserve
+           (Nodes, Id, After, Before, Base, Limit, Next, Entry_State, Count);
       end if;
    end Lemma_Copies_Frame;
 
    procedure Lemma_Optional_Frame
-     (Nodes : Tree; Id : Live_Node; Before, After : Code_Array;
-      Base, Limit, Next, Entry_State : State_Id; Count : Natural)
-   is
+     (Nodes                          : Tree;
+      Id                             : Live_Node;
+      Before, After                  : Code_Array;
+      Base, Limit, Next, Entry_State : State_Id;
+      Count                          : Natural) is
    begin
-      if Optional_Shape (Nodes, Id, Before, Base, Limit, Next, Entry_State, Count) then
-         Lemma_Optional_Preserve (Nodes, Id, Before, After, Base, Limit, Next, Entry_State, Count);
-      elsif Optional_Shape (Nodes, Id, After, Base, Limit, Next, Entry_State, Count) then
-         Lemma_Optional_Preserve (Nodes, Id, After, Before, Base, Limit, Next, Entry_State, Count);
+      if Optional_Shape
+           (Nodes, Id, Before, Base, Limit, Next, Entry_State, Count)
+      then
+         Lemma_Optional_Preserve
+           (Nodes, Id, Before, After, Base, Limit, Next, Entry_State, Count);
+      elsif Optional_Shape
+              (Nodes, Id, After, Base, Limit, Next, Entry_State, Count)
+      then
+         Lemma_Optional_Preserve
+           (Nodes, Id, After, Before, Base, Limit, Next, Entry_State, Count);
       end if;
    end Lemma_Optional_Frame;
 
@@ -1238,83 +2090,82 @@ package body Spark_Re_Trees.Matching with SPARK_Mode is
      Pre   =>
        Tree_Valid (Nodes)
        and then Nodes (Id).Kind in Concat_Node | Alt_Node | Repeat_Node
-       and then
-         Compiled_Shape (Nodes, Id, Code, Base, Limit, Next, Entry_State),
+       and then Compiled_Shape
+                  (Nodes, Id, Code, Base, Limit, Next, Entry_State),
      Post  =>
        Cut in Base .. Limit
        and then Middle <= Cut
-       and then
-         (case Nodes (Id).Kind is
-            when Concat_Node =>
-              Compiled_Shape
-                (Nodes, Nodes (Id).Right, Code, Base, Cut, Next, Middle)
-              and then
-                Compiled_Shape
-                  (Nodes,
-                   Nodes (Id).Left,
-                   Code,
-                   Cut,
-                   Limit,
-                   Middle,
-                   Entry_State),
-            when Alt_Node    =>
-              Cut < Limit
-              and then
-                Compiled_Shape
-                  (Nodes,
-                   Nodes (Id).Left,
-                   Code,
-                   Base,
-                   Cut,
-                   Next,
-                   Code (Limit).Next_1)
-              and then
-                Compiled_Shape
-                  (Nodes,
-                   Nodes (Id).Right,
-                   Code,
-                   Cut,
-                   Limit - 1,
-                   Next,
-                   Code (Limit).Next_2),
-            when Repeat_Node =>
-              Tail_Shape
-                (Nodes,
-                 Nodes (Id).Left,
-                 Code,
-                 Base,
-                 Cut,
-                 Next,
-                 Middle,
-                 (if Nodes (Id).Unlimited
-                  then 0
-                  else Nodes (Id).High - Nodes (Id).Low),
-                 Nodes (Id).Unlimited)
-              and then
-                Copies_Shape
-                  (Nodes,
-                   Nodes (Id).Left,
-                   Code,
-                   Cut,
-                   Limit,
-                   Middle,
-                   Entry_State,
-                   Nodes (Id).Low),
-            when others      => False)
+       and then (case Nodes (Id).Kind is
+                   when Concat_Node =>
+                     Compiled_Shape
+                       (Nodes, Nodes (Id).Right, Code, Base, Cut, Next, Middle)
+                     and then Compiled_Shape
+                                (Nodes,
+                                 Nodes (Id).Left,
+                                 Code,
+                                 Cut,
+                                 Limit,
+                                 Middle,
+                                 Entry_State),
+                   when Alt_Node    =>
+                     Cut < Limit
+                     and then Compiled_Shape
+                                (Nodes,
+                                 Nodes (Id).Left,
+                                 Code,
+                                 Base,
+                                 Cut,
+                                 Next,
+                                 Code (Limit).Next_1)
+                     and then Compiled_Shape
+                                (Nodes,
+                                 Nodes (Id).Right,
+                                 Code,
+                                 Cut,
+                                 Limit - 1,
+                                 Next,
+                                 Code (Limit).Next_2),
+                   when Repeat_Node =>
+                     Tail_Shape
+                       (Nodes,
+                        Nodes (Id).Left,
+                        Code,
+                        Base,
+                        Cut,
+                        Next,
+                        Middle,
+                        (if Nodes (Id).Unlimited
+                         then 0
+                         else Nodes (Id).High - Nodes (Id).Low),
+                        Nodes (Id).Unlimited)
+                     and then Copies_Shape
+                                (Nodes,
+                                 Nodes (Id).Left,
+                                 Code,
+                                 Cut,
+                                 Limit,
+                                 Middle,
+                                 Entry_State,
+                                 Nodes (Id).Low),
+                   when others      => False)
    is
       --  These searches reason only about the shape certificates' quantifier
       --  structure: the witnesses come from Reveal_Shape's postcondition and
       --  are consumed by the frame and join lemmas' contracts. Pruning the
       --  recursive definitions keeps the nested existentials from being
       --  re-instantiated under each enclosing universal.
-      pragma Annotate
-        (GNATprove, Hide_Info, "Expression_Function_Body", Compiled_Shape);
-      pragma Annotate
-        (GNATprove, Hide_Info, "Expression_Function_Body", Copies_Shape);
-      pragma Annotate
-        (GNATprove, Hide_Info, "Expression_Function_Body", Optional_Shape);
-      pragma Annotate
-        (GNATprove, Hide_Info, "Expression_Function_Body", Tail_Shape);
+      pragma
+        Annotate
+          (GNATprove, Hide_Info, "Expression_Function_Body", Compiled_Shape);
+      pragma
+        Annotate
+          (GNATprove, Hide_Info, "Expression_Function_Body", Copies_Shape);
+      pragma
+        Annotate
+          (GNATprove, Hide_Info, "Expression_Function_Body", Optional_Shape);
+      pragma
+        Annotate
+          (GNATprove, Hide_Info, "Expression_Function_Body", Tail_Shape);
    begin
       Reveal_Shape (Nodes, Id, Code, Base, Limit, Next, Entry_State);
       case Nodes (Id).Kind is
@@ -1323,28 +2174,26 @@ package body Spark_Re_Trees.Matching with SPARK_Mode is
                if (for some M in 0 .. C =>
                      Compiled_Shape
                        (Nodes, Nodes (Id).Right, Code, Base, C, Next, M)
-                     and then
-                       Compiled_Shape
-                         (Nodes,
-                          Nodes (Id).Left,
-                          Code,
-                          C,
-                          Limit,
-                          M,
-                          Entry_State))
+                     and then Compiled_Shape
+                                (Nodes,
+                                 Nodes (Id).Left,
+                                 Code,
+                                 C,
+                                 Limit,
+                                 M,
+                                 Entry_State))
                then
                   for M in 0 .. C loop
                      if Compiled_Shape
                           (Nodes, Nodes (Id).Right, Code, Base, C, Next, M)
-                       and then
-                         Compiled_Shape
-                           (Nodes,
-                            Nodes (Id).Left,
-                            Code,
-                            C,
-                            Limit,
-                            M,
-                            Entry_State)
+                       and then Compiled_Shape
+                                  (Nodes,
+                                   Nodes (Id).Left,
+                                   Code,
+                                   C,
+                                   Limit,
+                                   M,
+                                   Entry_State)
                      then
                         Cut := C;
                         Middle := M;
@@ -1361,15 +2210,14 @@ package body Spark_Re_Trees.Matching with SPARK_Mode is
                                     C,
                                     Next,
                                     J)
-                                 and then
-                                   Compiled_Shape
-                                     (Nodes,
-                                      Nodes (Id).Left,
-                                      Code,
-                                      C,
-                                      Limit,
-                                      J,
-                                      Entry_State)));
+                                 and then Compiled_Shape
+                                            (Nodes,
+                                             Nodes (Id).Left,
+                                             Code,
+                                             C,
+                                             Limit,
+                                             J,
+                                             Entry_State)));
                   end loop;
                   pragma Assert (False);
                end if;
@@ -1385,15 +2233,14 @@ package body Spark_Re_Trees.Matching with SPARK_Mode is
                                 K,
                                 Next,
                                 M)
-                             and then
-                               Compiled_Shape
-                                 (Nodes,
-                                  Nodes (Id).Left,
-                                  Code,
-                                  K,
-                                  Limit,
-                                  M,
-                                  Entry_State)));
+                             and then Compiled_Shape
+                                        (Nodes,
+                                         Nodes (Id).Left,
+                                         Code,
+                                         K,
+                                         Limit,
+                                         M,
+                                         Entry_State)));
             end loop;
             pragma Assert (False);
 
@@ -1412,16 +2259,15 @@ package body Spark_Re_Trees.Matching with SPARK_Mode is
                          then 0
                          else Nodes (Id).High - Nodes (Id).Low),
                         Nodes (Id).Unlimited)
-                     and then
-                       Copies_Shape
-                         (Nodes,
-                          Nodes (Id).Left,
-                          Code,
-                          C,
-                          Limit,
-                          M,
-                          Entry_State,
-                          Nodes (Id).Low))
+                     and then Copies_Shape
+                                (Nodes,
+                                 Nodes (Id).Left,
+                                 Code,
+                                 C,
+                                 Limit,
+                                 M,
+                                 Entry_State,
+                                 Nodes (Id).Low))
                then
                   for M in 0 .. C loop
                      if Tail_Shape
@@ -1436,16 +2282,15 @@ package body Spark_Re_Trees.Matching with SPARK_Mode is
                             then 0
                             else Nodes (Id).High - Nodes (Id).Low),
                            Nodes (Id).Unlimited)
-                       and then
-                         Copies_Shape
-                           (Nodes,
-                            Nodes (Id).Left,
-                            Code,
-                            C,
-                            Limit,
-                            M,
-                            Entry_State,
-                            Nodes (Id).Low)
+                       and then Copies_Shape
+                                  (Nodes,
+                                   Nodes (Id).Left,
+                                   Code,
+                                   C,
+                                   Limit,
+                                   M,
+                                   Entry_State,
+                                   Nodes (Id).Low)
                      then
                         Cut := C;
                         Middle := M;
@@ -1466,16 +2311,15 @@ package body Spark_Re_Trees.Matching with SPARK_Mode is
                                      then 0
                                      else Nodes (Id).High - Nodes (Id).Low),
                                     Nodes (Id).Unlimited)
-                                 and then
-                                   Copies_Shape
-                                     (Nodes,
-                                      Nodes (Id).Left,
-                                      Code,
-                                      C,
-                                      Limit,
-                                      J,
-                                      Entry_State,
-                                      Nodes (Id).Low)));
+                                 and then Copies_Shape
+                                            (Nodes,
+                                             Nodes (Id).Left,
+                                             Code,
+                                             C,
+                                             Limit,
+                                             J,
+                                             Entry_State,
+                                             Nodes (Id).Low)));
                   end loop;
                   pragma Assert (False);
                end if;
@@ -1495,16 +2339,15 @@ package body Spark_Re_Trees.Matching with SPARK_Mode is
                                  then 0
                                  else Nodes (Id).High - Nodes (Id).Low),
                                 Nodes (Id).Unlimited)
-                             and then
-                               Copies_Shape
-                                 (Nodes,
-                                  Nodes (Id).Left,
-                                  Code,
-                                  K,
-                                  Limit,
-                                  M,
-                                  Entry_State,
-                                  Nodes (Id).Low)));
+                             and then Copies_Shape
+                                        (Nodes,
+                                         Nodes (Id).Left,
+                                         Code,
+                                         K,
+                                         Limit,
+                                         M,
+                                         Entry_State,
+                                         Nodes (Id).Low)));
             end loop;
             pragma Assert (False);
 
@@ -1518,15 +2361,14 @@ package body Spark_Re_Trees.Matching with SPARK_Mode is
                      C,
                      Next,
                      Code (Limit).Next_1)
-                 and then
-                   Compiled_Shape
-                     (Nodes,
-                      Nodes (Id).Right,
-                      Code,
-                      C,
-                      Limit - 1,
-                      Next,
-                      Code (Limit).Next_2)
+                 and then Compiled_Shape
+                            (Nodes,
+                             Nodes (Id).Right,
+                             Code,
+                             C,
+                             Limit - 1,
+                             Next,
+                             Code (Limit).Next_2)
                then
                   Cut := C;
                   Middle := 0;
@@ -1543,15 +2385,14 @@ package body Spark_Re_Trees.Matching with SPARK_Mode is
                               K,
                               Next,
                               Code (Limit).Next_1)
-                           and then
-                             Compiled_Shape
-                               (Nodes,
-                                Nodes (Id).Right,
-                                Code,
-                                K,
-                                Limit - 1,
-                                Next,
-                                Code (Limit).Next_2)));
+                           and then Compiled_Shape
+                                      (Nodes,
+                                       Nodes (Id).Right,
+                                       Code,
+                                       K,
+                                       Limit - 1,
+                                       Next,
+                                       Code (Limit).Next_2)));
             end loop;
             pragma Assert (False);
 
@@ -1574,41 +2415,45 @@ package body Spark_Re_Trees.Matching with SPARK_Mode is
      Ghost => Static,
      Pre   =>
        Tree_Valid (Nodes)
-       and then
-         Copies_Shape (Nodes, Id, Code, Base, Limit, Next, Entry_State, Count),
+       and then Copies_Shape
+                  (Nodes, Id, Code, Base, Limit, Next, Entry_State, Count),
      Post  =>
        Cut in Base .. Limit
        and then Middle <= Cut
-       and then
-         Copies_Shape (Nodes, Id, Code, Base, Cut, Next, Middle, Count - 1)
-       and then
-         Compiled_Shape (Nodes, Id, Code, Cut, Limit, Middle, Entry_State)
+       and then Copies_Shape
+                  (Nodes, Id, Code, Base, Cut, Next, Middle, Count - 1)
+       and then Compiled_Shape
+                  (Nodes, Id, Code, Cut, Limit, Middle, Entry_State)
    is
       --  These searches reason only about the shape certificates' quantifier
       --  structure: the witnesses come from Reveal_Shape's postcondition and
       --  are consumed by the frame and join lemmas' contracts. Pruning the
       --  recursive definitions keeps the nested existentials from being
       --  re-instantiated under each enclosing universal.
-      pragma Annotate
-        (GNATprove, Hide_Info, "Expression_Function_Body", Compiled_Shape);
-      pragma Annotate
-        (GNATprove, Hide_Info, "Expression_Function_Body", Copies_Shape);
-      pragma Annotate
-        (GNATprove, Hide_Info, "Expression_Function_Body", Optional_Shape);
-      pragma Annotate
-        (GNATprove, Hide_Info, "Expression_Function_Body", Tail_Shape);
+      pragma
+        Annotate
+          (GNATprove, Hide_Info, "Expression_Function_Body", Compiled_Shape);
+      pragma
+        Annotate
+          (GNATprove, Hide_Info, "Expression_Function_Body", Copies_Shape);
+      pragma
+        Annotate
+          (GNATprove, Hide_Info, "Expression_Function_Body", Optional_Shape);
+      pragma
+        Annotate
+          (GNATprove, Hide_Info, "Expression_Function_Body", Tail_Shape);
    begin
       Reveal_Copies (Nodes, Id, Code, Base, Limit, Next, Entry_State, Count);
       for C in Base .. Limit loop
          if (for some M in 0 .. C =>
                Copies_Shape (Nodes, Id, Code, Base, C, Next, M, Count - 1)
-               and then
-                 Compiled_Shape (Nodes, Id, Code, C, Limit, M, Entry_State))
+               and then Compiled_Shape
+                          (Nodes, Id, Code, C, Limit, M, Entry_State))
          then
             for M in 0 .. C loop
                if Copies_Shape (Nodes, Id, Code, Base, C, Next, M, Count - 1)
-                 and then
-                   Compiled_Shape (Nodes, Id, Code, C, Limit, M, Entry_State)
+                 and then Compiled_Shape
+                            (Nodes, Id, Code, C, Limit, M, Entry_State)
                then
                   Cut := C;
                   Middle := M;
@@ -1619,9 +2464,14 @@ package body Spark_Re_Trees.Matching with SPARK_Mode is
                    (for all J in 0 .. M =>
                       not (Copies_Shape
                              (Nodes, Id, Code, Base, C, Next, J, Count - 1)
-                           and then
-                             Compiled_Shape
-                               (Nodes, Id, Code, C, Limit, J, Entry_State)));
+                           and then Compiled_Shape
+                                      (Nodes,
+                                       Id,
+                                       Code,
+                                       C,
+                                       Limit,
+                                       J,
+                                       Entry_State)));
             end loop;
             pragma Assert (False);
          end if;
@@ -1631,9 +2481,14 @@ package body Spark_Re_Trees.Matching with SPARK_Mode is
                 not (for some M in 0 .. K =>
                        Copies_Shape
                          (Nodes, Id, Code, Base, K, Next, M, Count - 1)
-                       and then
-                         Compiled_Shape
-                           (Nodes, Id, Code, K, Limit, M, Entry_State)));
+                       and then Compiled_Shape
+                                  (Nodes,
+                                   Id,
+                                   Code,
+                                   K,
+                                   Limit,
+                                   M,
+                                   Entry_State)));
       end loop;
       Cut := 0;
       Middle := 0;
@@ -1651,38 +2506,41 @@ package body Spark_Re_Trees.Matching with SPARK_Mode is
      Ghost => Static,
      Pre   =>
        Tree_Valid (Nodes)
-       and then
-         Optional_Shape
-           (Nodes, Id, Code, Base, Limit, Next, Entry_State, Count),
+       and then Optional_Shape
+                  (Nodes, Id, Code, Base, Limit, Next, Entry_State, Count),
      Post  =>
        Cut in Base .. Limit - 1
        and then Middle <= Cut
-       and then
-         Optional_Shape
-           (Nodes, Id, Code, Base, Cut, Next, Code (Limit).Next_2, Count - 1)
-       and then
-         Compiled_Shape
-           (Nodes,
-            Id,
-            Code,
-            Cut,
-            Limit - 1,
-            Code (Limit).Next_2,
-            Code (Limit).Next_1)
+       and then Optional_Shape
+                  (Nodes,
+                   Id,
+                   Code,
+                   Base,
+                   Cut,
+                   Next,
+                   Code (Limit).Next_2,
+                   Count - 1)
+       and then Compiled_Shape
+                  (Nodes,
+                   Id,
+                   Code,
+                   Cut,
+                   Limit - 1,
+                   Code (Limit).Next_2,
+                   Code (Limit).Next_1)
    is
    begin
       for C in Base .. Limit - 1 loop
          if Optional_Shape
               (Nodes, Id, Code, Base, C, Next, Code (Limit).Next_2, Count - 1)
-           and then
-             Compiled_Shape
-               (Nodes,
-                Id,
-                Code,
-                C,
-                Limit - 1,
-                Code (Limit).Next_2,
-                Code (Limit).Next_1)
+           and then Compiled_Shape
+                      (Nodes,
+                       Id,
+                       Code,
+                       C,
+                       Limit - 1,
+                       Code (Limit).Next_2,
+                       Code (Limit).Next_1)
          then
             Cut := C;
             Middle := 0;
@@ -1700,15 +2558,14 @@ package body Spark_Re_Trees.Matching with SPARK_Mode is
                         Next,
                         Code (Limit).Next_2,
                         Count - 1)
-                     and then
-                       Compiled_Shape
-                         (Nodes,
-                          Id,
-                          Code,
-                          K,
-                          Limit - 1,
-                          Code (Limit).Next_2,
-                          Code (Limit).Next_1)));
+                     and then Compiled_Shape
+                                (Nodes,
+                                 Id,
+                                 Code,
+                                 K,
+                                 Limit - 1,
+                                 Code (Limit).Next_2,
+                                 Code (Limit).Next_1)));
       end loop;
       Cut := 0;
       Middle := 0;
@@ -1724,8 +2581,8 @@ package body Spark_Re_Trees.Matching with SPARK_Mode is
      Ghost              => Static,
      Pre                =>
        Tree_Valid (Nodes)
-       and then
-         Compiled_Shape (Nodes, Id, Code, Base, Limit, Next, Entry_State),
+       and then Compiled_Shape
+                  (Nodes, Id, Code, Base, Limit, Next, Entry_State),
      Post               =>
        (Entry_State = Next or Entry_State in Base + 1 .. Limit)
        and then Closed_Interval (Code, Base, Limit, Next),
@@ -1742,8 +2599,8 @@ package body Spark_Re_Trees.Matching with SPARK_Mode is
      Ghost              => Static,
      Pre                =>
        Tree_Valid (Nodes)
-       and then
-         Copies_Shape (Nodes, Id, Code, Base, Limit, Next, Entry_State, Count),
+       and then Copies_Shape
+                  (Nodes, Id, Code, Base, Limit, Next, Entry_State, Count),
      Post               =>
        (Entry_State = Next or Entry_State in Base + 1 .. Limit)
        and then Closed_Interval (Code, Base, Limit, Next),
@@ -1760,9 +2617,8 @@ package body Spark_Re_Trees.Matching with SPARK_Mode is
      Ghost              => Static,
      Pre                =>
        Tree_Valid (Nodes)
-       and then
-         Optional_Shape
-           (Nodes, Id, Code, Base, Limit, Next, Entry_State, Count),
+       and then Optional_Shape
+                  (Nodes, Id, Code, Base, Limit, Next, Entry_State, Count),
      Post               =>
        (Entry_State = Next or Entry_State in Base + 1 .. Limit)
        and then Closed_Interval (Code, Base, Limit, Next),
@@ -1780,9 +2636,16 @@ package body Spark_Re_Trees.Matching with SPARK_Mode is
      Ghost              => Static,
      Pre                =>
        Tree_Valid (Nodes)
-       and then
-         Tail_Shape
-           (Nodes, Id, Code, Base, Limit, Next, Entry_State, Count, Unlimited),
+       and then Tail_Shape
+                  (Nodes,
+                   Id,
+                   Code,
+                   Base,
+                   Limit,
+                   Next,
+                   Entry_State,
+                   Count,
+                   Unlimited),
      Post               =>
        (Entry_State = Next or Entry_State in Base + 1 .. Limit)
        and then Closed_Interval (Code, Base, Limit, Next),
@@ -1940,8 +2803,8 @@ package body Spark_Re_Trees.Matching with SPARK_Mode is
        and then Last <= Text'Length
        and then Small <= Large
        and then Large <= Max_Repetition
-       and then
-         Repeated_Matches (Nodes, Id, Text, First, Last, 0, Small, False),
+       and then Repeated_Matches
+                  (Nodes, Id, Text, First, Last, 0, Small, False),
      Post               =>
        Repeated_Matches (Nodes, Id, Text, First, Last, 0, Large, False),
      Subprogram_Variant => (Decreases => Small)
@@ -1950,9 +2813,8 @@ package body Spark_Re_Trees.Matching with SPARK_Mode is
       if First /= Last and Small /= Large then
          for M in First .. Last loop
             if Matches (Nodes, Nodes (Id).Left, Text, First, M)
-              and then
-                Repeated_Matches
-                  (Nodes, Id, Text, M, Last, 0, Small - 1, False)
+              and then Repeated_Matches
+                         (Nodes, Id, Text, M, Last, 0, Small - 1, False)
             then
                Lemma_Optional_Widen
                  (Nodes, Id, Text, M, Last, Small - 1, Large - 1);
@@ -1962,9 +2824,15 @@ package body Spark_Re_Trees.Matching with SPARK_Mode is
               Loop_Invariant
                 (for all K in First .. M =>
                    not (Matches (Nodes, Nodes (Id).Left, Text, First, K)
-                        and then
-                          Repeated_Matches
-                            (Nodes, Id, Text, K, Last, 0, Small - 1, False)));
+                        and then Repeated_Matches
+                                   (Nodes,
+                                    Id,
+                                    Text,
+                                    K,
+                                    Last,
+                                    0,
+                                    Small - 1,
+                                    False)));
          end loop;
          pragma Assert (False);
       end if;
@@ -1982,12 +2850,12 @@ package body Spark_Re_Trees.Matching with SPARK_Mode is
      Ghost              => Static,
      Pre                =>
        Tree_Valid (Nodes)
-       and then
-         Compiled_Shape (Nodes, Id, Code, Base, Limit, Next, Entry_State)
+       and then Compiled_Shape
+                  (Nodes, Id, Code, Base, Limit, Next, Entry_State)
        and then First <= Last
        and then Last <= Text'Length
-       and then
-         Fragment_Path (Code, Entry_State, Next, Text, First, Last, Fuel),
+       and then Fragment_Path
+                  (Code, Entry_State, Next, Text, First, Last, Fuel),
      Post               => Matches (Nodes, Id, Text, First, Last),
      Subprogram_Variant =>
        (Decreases => Id,
@@ -2014,31 +2882,29 @@ package body Spark_Re_Trees.Matching with SPARK_Mode is
        and then Count <= Max_Repetition
        and then High <= Max_Repetition
        and then (Unlimited or Count <= High)
-       and then
-         Tail_Shape
-           (Nodes,
-            Nodes (Id).Left,
-            Code,
-            Tail_Base,
-            Base,
-            Stop,
-            Next,
-            (if Unlimited then 0 else High - Count),
-            Unlimited)
-       and then
-         Copies_Shape
-           (Nodes,
-            Nodes (Id).Left,
-            Code,
-            Base,
-            Limit,
-            Next,
-            Entry_State,
-            Count)
+       and then Tail_Shape
+                  (Nodes,
+                   Nodes (Id).Left,
+                   Code,
+                   Tail_Base,
+                   Base,
+                   Stop,
+                   Next,
+                   (if Unlimited then 0 else High - Count),
+                   Unlimited)
+       and then Copies_Shape
+                  (Nodes,
+                   Nodes (Id).Left,
+                   Code,
+                   Base,
+                   Limit,
+                   Next,
+                   Entry_State,
+                   Count)
        and then First <= Last
        and then Last <= Text'Length
-       and then
-         Fragment_Path (Code, Entry_State, Stop, Text, First, Last, Fuel),
+       and then Fragment_Path
+                  (Code, Entry_State, Stop, Text, First, Last, Fuel),
      Post               =>
        Repeated_Matches (Nodes, Id, Text, First, Last, Count, High, Unlimited),
      Subprogram_Variant =>
@@ -2063,21 +2929,20 @@ package body Spark_Re_Trees.Matching with SPARK_Mode is
        Tree_Valid (Nodes)
        and then Nodes (Id).Kind = Repeat_Node
        and then High <= Max_Repetition
-       and then
-         Tail_Shape
-           (Nodes,
-            Nodes (Id).Left,
-            Code,
-            Base,
-            Limit,
-            Next,
-            Entry_State,
-            High,
-            Unlimited)
+       and then Tail_Shape
+                  (Nodes,
+                   Nodes (Id).Left,
+                   Code,
+                   Base,
+                   Limit,
+                   Next,
+                   Entry_State,
+                   High,
+                   Unlimited)
        and then First <= Last
        and then Last <= Text'Length
-       and then
-         Fragment_Path (Code, Entry_State, Next, Text, First, Last, Fuel),
+       and then Fragment_Path
+                  (Code, Entry_State, Next, Text, First, Last, Fuel),
      Post               =>
        Repeated_Matches (Nodes, Id, Text, First, Last, 0, High, Unlimited),
      Subprogram_Variant =>
@@ -2101,13 +2966,19 @@ package body Spark_Re_Trees.Matching with SPARK_Mode is
        Tree_Valid (Nodes)
        and then Nodes (Id).Kind = Repeat_Node
        and then High <= Max_Repetition
-       and then
-         Optional_Shape
-           (Nodes, Nodes (Id).Left, Code, Base, Limit, Next, Entry_State, High)
+       and then Optional_Shape
+                  (Nodes,
+                   Nodes (Id).Left,
+                   Code,
+                   Base,
+                   Limit,
+                   Next,
+                   Entry_State,
+                   High)
        and then First <= Last
        and then Last <= Text'Length
-       and then
-         Fragment_Path (Code, Entry_State, Next, Text, First, Last, Fuel),
+       and then Fragment_Path
+                  (Code, Entry_State, Next, Text, First, Last, Fuel),
      Post               =>
        Repeated_Matches (Nodes, Id, Text, First, Last, 0, High, False),
      Subprogram_Variant =>
@@ -2516,37 +3387,35 @@ package body Spark_Re_Trees.Matching with SPARK_Mode is
        and then High <= Max_Repetition
        and then (Unlimited or Low <= High)
        and then (Low > 0 or First < Last)
-       and then
-         Repeated_Matches (Nodes, Id, Text, First, Last, Low, High, Unlimited),
+       and then Repeated_Matches
+                  (Nodes, Id, Text, First, Last, Low, High, Unlimited),
      Post  =>
        Middle in First .. Last
        and then (if Low = 0 and Unlimited then Middle > First)
        and then Matches (Nodes, Nodes (Id).Left, Text, First, Middle)
-       and then
-         Repeated_Matches
-           (Nodes,
-            Id,
-            Text,
-            Middle,
-            Last,
-            (if Low > 0 then Low - 1 else 0),
-            (if Unlimited then High else High - 1),
-            Unlimited)
+       and then Repeated_Matches
+                  (Nodes,
+                   Id,
+                   Text,
+                   Middle,
+                   Last,
+                   (if Low > 0 then Low - 1 else 0),
+                   (if Unlimited then High else High - 1),
+                   Unlimited)
    is
    begin
       for M in First .. Last loop
          if (Low > 0 or not Unlimited or M > First)
            and then Matches (Nodes, Nodes (Id).Left, Text, First, M)
-           and then
-             Repeated_Matches
-               (Nodes,
-                Id,
-                Text,
-                M,
-                Last,
-                (if Low > 0 then Low - 1 else 0),
-                (if Unlimited then High else High - 1),
-                Unlimited)
+           and then Repeated_Matches
+                      (Nodes,
+                       Id,
+                       Text,
+                       M,
+                       Last,
+                       (if Low > 0 then Low - 1 else 0),
+                       (if Unlimited then High else High - 1),
+                       Unlimited)
          then
             Middle := M;
             return;
@@ -2556,16 +3425,15 @@ package body Spark_Re_Trees.Matching with SPARK_Mode is
              (for all K in First .. M =>
                 not ((Low > 0 or not Unlimited or K > First)
                      and then Matches (Nodes, Nodes (Id).Left, Text, First, K)
-                     and then
-                       Repeated_Matches
-                         (Nodes,
-                          Id,
-                          Text,
-                          K,
-                          Last,
-                          (if Low > 0 then Low - 1 else 0),
-                          (if Unlimited then High else High - 1),
-                          Unlimited)));
+                     and then Repeated_Matches
+                                (Nodes,
+                                 Id,
+                                 Text,
+                                 K,
+                                 Last,
+                                 (if Low > 0 then Low - 1 else 0),
+                                 (if Unlimited then High else High - 1),
+                                 Unlimited)));
       end loop;
       Middle := First;
       pragma Assert (False);
@@ -2583,8 +3451,8 @@ package body Spark_Re_Trees.Matching with SPARK_Mode is
      Ghost              => Static,
      Pre                =>
        Tree_Valid (Nodes)
-       and then
-         Compiled_Shape (Nodes, Id, Code, Base, Limit, Next, Entry_State)
+       and then Compiled_Shape
+                  (Nodes, Id, Code, Base, Limit, Next, Entry_State)
        and then First <= Last
        and then Last <= Text'Length
        and then Matches (Nodes, Id, Text, First, Last),
@@ -2614,32 +3482,29 @@ package body Spark_Re_Trees.Matching with SPARK_Mode is
        and then Count <= Max_Repetition
        and then High <= Max_Repetition
        and then (Unlimited or Count <= High)
-       and then
-         Tail_Shape
-           (Nodes,
-            Nodes (Id).Left,
-            Code,
-            Tail_Base,
-            Base,
-            Stop,
-            Next,
-            (if Unlimited then 0 else High - Count),
-            Unlimited)
-       and then
-         Copies_Shape
-           (Nodes,
-            Nodes (Id).Left,
-            Code,
-            Base,
-            Limit,
-            Next,
-            Entry_State,
-            Count)
+       and then Tail_Shape
+                  (Nodes,
+                   Nodes (Id).Left,
+                   Code,
+                   Tail_Base,
+                   Base,
+                   Stop,
+                   Next,
+                   (if Unlimited then 0 else High - Count),
+                   Unlimited)
+       and then Copies_Shape
+                  (Nodes,
+                   Nodes (Id).Left,
+                   Code,
+                   Base,
+                   Limit,
+                   Next,
+                   Entry_State,
+                   Count)
        and then First <= Last
        and then Last <= Text'Length
-       and then
-         Repeated_Matches
-           (Nodes, Id, Text, First, Last, Count, High, Unlimited),
+       and then Repeated_Matches
+                  (Nodes, Id, Text, First, Last, Count, High, Unlimited),
      Post               =>
        Fragment_Path (Code, Entry_State, Stop, Text, First, Last, Fuel),
      Subprogram_Variant =>
@@ -2664,21 +3529,20 @@ package body Spark_Re_Trees.Matching with SPARK_Mode is
        Tree_Valid (Nodes)
        and then Nodes (Id).Kind = Repeat_Node
        and then High <= Max_Repetition
-       and then
-         Tail_Shape
-           (Nodes,
-            Nodes (Id).Left,
-            Code,
-            Base,
-            Limit,
-            Next,
-            Entry_State,
-            High,
-            Unlimited)
+       and then Tail_Shape
+                  (Nodes,
+                   Nodes (Id).Left,
+                   Code,
+                   Base,
+                   Limit,
+                   Next,
+                   Entry_State,
+                   High,
+                   Unlimited)
        and then First <= Last
        and then Last <= Text'Length
-       and then
-         Repeated_Matches (Nodes, Id, Text, First, Last, 0, High, Unlimited),
+       and then Repeated_Matches
+                  (Nodes, Id, Text, First, Last, 0, High, Unlimited),
      Post               =>
        Fragment_Path (Code, Entry_State, Next, Text, First, Last, Fuel),
      Subprogram_Variant =>
@@ -2702,13 +3566,19 @@ package body Spark_Re_Trees.Matching with SPARK_Mode is
        Tree_Valid (Nodes)
        and then Nodes (Id).Kind = Repeat_Node
        and then High <= Max_Repetition
-       and then
-         Optional_Shape
-           (Nodes, Nodes (Id).Left, Code, Base, Limit, Next, Entry_State, High)
+       and then Optional_Shape
+                  (Nodes,
+                   Nodes (Id).Left,
+                   Code,
+                   Base,
+                   Limit,
+                   Next,
+                   Entry_State,
+                   High)
        and then First <= Last
        and then Last <= Text'Length
-       and then
-         Repeated_Matches (Nodes, Id, Text, First, Last, 0, High, False),
+       and then Repeated_Matches
+                  (Nodes, Id, Text, First, Last, 0, High, False),
      Post               =>
        Fragment_Path (Code, Entry_State, Next, Text, First, Last, Fuel),
      Subprogram_Variant =>
@@ -3125,10 +3995,8 @@ package body Spark_Re_Trees.Matching with SPARK_Mode is
      (Nodes : Tree; Root : Live_Node; Self : Program) return Boolean
    is (Self.Count >= 1
        and then Self.Code (1).Op = Accept_State
-       and then
-         Compiled_Shape
-           (Nodes, Root, Self.Code, 1, Self.Count, 1, Self.Start));
-
+       and then Compiled_Shape
+                  (Nodes, Root, Self.Code, 1, Self.Count, 1, Self.Start));
 
    procedure Compile_Tree
      (Nodes  : Tree;
@@ -3151,9 +4019,8 @@ package body Spark_Re_Trees.Matching with SPARK_Mode is
         Post =>
           not Result.Valid
           and (if Status'Old /= Success then Status = Status'Old)
-          and
-            (if Status'Old = Success
-             then Status in Success | State_Limit | Expansion_Limit)
+          and (if Status'Old = Success
+               then Status in Success | State_Limit | Expansion_Limit)
           and Links_Valid (Result)
           and Result.Count >= Result.Count'Old
           and Id <= Result.Count
@@ -3165,12 +4032,11 @@ package body Spark_Re_Trees.Matching with SPARK_Mode is
                 (for all K in 1 .. Result.Count'Old =>
                    Result.Code (K) = Result.Code'Old (K))
                 and (if Id /= 0 then Id > Result.Count'Old)
-                and
-                  (if Status = Success
-                   then
-                     Id = Result.Count
-                     and Result.Count = Result.Count'Old + 1
-                     and Result.Code (Id) = Instruction'(Op, Bytes, A, B)));
+                and (if Status = Success
+                     then
+                       Id = Result.Count
+                       and Result.Count = Result.Count'Old + 1
+                       and Result.Code (Id) = Instruction'(Op, Bytes, A, B)));
       begin
          Id := 0;
          if Status /= Success then
@@ -3194,9 +4060,8 @@ package body Spark_Re_Trees.Matching with SPARK_Mode is
         Post               =>
           not Result.Valid
           and (if Status'Old /= Success then Status = Status'Old)
-          and
-            (if Status'Old = Success
-             then Status in Success | State_Limit | Expansion_Limit)
+          and (if Status'Old = Success
+               then Status in Success | State_Limit | Expansion_Limit)
           and Links_Valid (Result)
           and Result.Count >= Result.Count'Old
           and Entry_State <= Result.Count
@@ -3208,23 +4073,26 @@ package body Spark_Re_Trees.Matching with SPARK_Mode is
              (Static =>
                 (for all K in 1 .. Result.Count'Old =>
                    Result.Code (K) = Result.Code'Old (K))
-                and
-                  (if Status = Success
-                   then
-                     (Entry_State = Next or Entry_State > Result.Count'Old)
-                     and Fragment_Closed (Result, Result.Count'Old, Next)
-                     and Compiled_Shape
-                       (Nodes, Id, Result.Code, Result.Count'Old, Result.Count,
-                        Next, Entry_State)
-                     and
-                       (if Nodes (Id).Kind in Empty_Node .. End_Node
-                        then
-                          Leaf_Compiled
-                            (Nodes (Id),
-                             Result,
-                             Result.Count'Old,
-                             Next,
-                             Entry_State))));
+                and (if Status = Success
+                     then
+                       (Entry_State = Next or Entry_State > Result.Count'Old)
+                       and Fragment_Closed (Result, Result.Count'Old, Next)
+                       and Compiled_Shape
+                             (Nodes,
+                              Id,
+                              Result.Code,
+                              Result.Count'Old,
+                              Result.Count,
+                              Next,
+                              Entry_State)
+                       and (if Nodes (Id).Kind in Empty_Node .. End_Node
+                            then
+                              Leaf_Compiled
+                                (Nodes (Id),
+                                 Result,
+                                 Result.Count'Old,
+                                 Next,
+                                 Entry_State))));
          Base    : constant State_Id := Result.Count
          with Ghost => Static;
          A, B, S : State_Id;
@@ -3256,35 +4124,70 @@ package body Spark_Re_Trees.Matching with SPARK_Mode is
             when Concat_Node =>
                Build (N.Right, Next, A);
                declare
-                  Cut : constant State_Id := Result.Count with Ghost => Static;
-                  Right_Code : constant Code_Array := Result.Code with Ghost => Static;
+                  Cut        : constant State_Id := Result.Count
+                  with Ghost => Static;
+                  Right_Code : constant Code_Array := Result.Code
+                  with Ghost => Static;
                begin
                   Build (N.Left, A, Entry_State);
                   if Status = Success then
                      Lemma_Shape_Frame
-                       (Nodes, N.Right, Right_Code, Result.Code, Base, Cut, Next, A);
+                       (Nodes,
+                        N.Right,
+                        Right_Code,
+                        Result.Code,
+                        Base,
+                        Cut,
+                        Next,
+                        A);
                      Lemma_Concat_Join
-                       (Nodes, Id, Result.Code, Base, Cut, Result.Count, Next, A, Entry_State);
+                       (Nodes,
+                        Id,
+                        Result.Code,
+                        Base,
+                        Cut,
+                        Result.Count,
+                        Next,
+                        A,
+                        Entry_State);
                   end if;
                end;
 
             when Alt_Node    =>
                Build (N.Left, Next, A);
                declare
-                  Cut : constant State_Id := Result.Count with Ghost => Static;
-                  Left_Code : constant Code_Array := Result.Code with Ghost => Static;
+                  Cut       : constant State_Id := Result.Count
+                  with Ghost => Static;
+                  Left_Code : constant Code_Array := Result.Code
+                  with Ghost => Static;
                begin
                   Build (N.Right, Next, B);
                   declare
-                     Right_Last : constant State_Id := Result.Count with Ghost => Static;
-                     Right_Code : constant Code_Array := Result.Code with Ghost => Static;
+                     Right_Last : constant State_Id := Result.Count
+                     with Ghost => Static;
+                     Right_Code : constant Code_Array := Result.Code
+                     with Ghost => Static;
                   begin
                      Emit (Split, A, B, Entry_State);
                      if Status = Success then
                         Lemma_Shape_Frame
-                          (Nodes, N.Left, Left_Code, Result.Code, Base, Cut, Next, A);
+                          (Nodes,
+                           N.Left,
+                           Left_Code,
+                           Result.Code,
+                           Base,
+                           Cut,
+                           Next,
+                           A);
                         Lemma_Shape_Frame
-                          (Nodes, N.Right, Right_Code, Result.Code, Cut, Right_Last, Next, B);
+                          (Nodes,
+                           N.Right,
+                           Right_Code,
+                           Result.Code,
+                           Cut,
+                           Right_Last,
+                           Next,
+                           B);
                      end if;
                   end;
                end;
@@ -3295,14 +4198,22 @@ package body Spark_Re_Trees.Matching with SPARK_Mode is
                   Emit (Split, 0, Next, S);
                   Build (N.Left, S, B);
                   declare
-                     Body_Code : constant Code_Array := Result.Code with Ghost => Static;
+                     Body_Code : constant Code_Array := Result.Code
+                     with Ghost => Static;
                   begin
                      if S /= 0 then
                         Result.Code (S).Next_1 := B;
                      end if;
                      if Status = Success then
                         Lemma_Shape_Frame
-                          (Nodes, N.Left, Body_Code, Result.Code, S, Result.Count, S, B);
+                          (Nodes,
+                           N.Left,
+                           Body_Code,
+                           Result.Code,
+                           S,
+                           Result.Count,
+                           S,
+                           B);
                      end if;
                   end;
                   A := S;
@@ -3322,8 +4233,10 @@ package body Spark_Re_Trees.Matching with SPARK_Mode is
                      pragma
                        Loop_Invariant
                          (Status in Success | State_Limit | Expansion_Limit);
-                  pragma Loop_Invariant
-                    (if Status'Loop_Entry /= Success then Status = Status'Loop_Entry);
+                     pragma
+                       Loop_Invariant
+                         (if Status'Loop_Entry /= Success
+                            then Status = Status'Loop_Entry);
                      pragma
                        Loop_Invariant
                          (Static =>
@@ -3335,102 +4248,227 @@ package body Spark_Re_Trees.Matching with SPARK_Mode is
                      pragma
                        Loop_Invariant
                          (if Status = Success and Next > 0 then A > 0);
-                     pragma Loop_Invariant
-                       (Static => (if Status = Success then Optional_Shape
-                         (Nodes, N.Left, Result.Code, Base, Result.Count, Next, A, K - 1)));
+                     pragma
+                       Loop_Invariant
+                         (Static =>
+                            (if Status = Success
+                             then
+                               Optional_Shape
+                                 (Nodes,
+                                  N.Left,
+                                  Result.Code,
+                                  Base,
+                                  Result.Count,
+                                  Next,
+                                  A,
+                                  K - 1)));
                      declare
-                        Previous_Code : constant Code_Array := Result.Code with Ghost => Static;
-                        Cut : constant State_Id := Result.Count with Ghost => Static;
-                        Previous_Entry : constant State_Id := A with Ghost => Static;
+                        Previous_Code  : constant Code_Array := Result.Code
+                        with Ghost => Static;
+                        Cut            : constant State_Id := Result.Count
+                        with Ghost => Static;
+                        Previous_Entry : constant State_Id := A
+                        with Ghost => Static;
                      begin
                         Build (N.Left, A, B);
                         declare
-                           Body_Code : constant Code_Array := Result.Code with Ghost => Static;
-                           Body_Last : constant State_Id := Result.Count with Ghost => Static;
+                           Body_Code : constant Code_Array := Result.Code
+                           with Ghost => Static;
+                           Body_Last : constant State_Id := Result.Count
+                           with Ghost => Static;
                         begin
                            Emit (Split, B, A, S);
                            if Status = Success then
                               Lemma_Optional_Frame
-                                (Nodes, N.Left, Previous_Code, Result.Code,
-                                 Base, Cut, Next, Previous_Entry, K - 1);
+                                (Nodes,
+                                 N.Left,
+                                 Previous_Code,
+                                 Result.Code,
+                                 Base,
+                                 Cut,
+                                 Next,
+                                 Previous_Entry,
+                                 K - 1);
                               Lemma_Shape_Frame
-                                (Nodes, N.Left, Body_Code, Result.Code,
-                                 Cut, Body_Last, Previous_Entry, B);
+                                (Nodes,
+                                 N.Left,
+                                 Body_Code,
+                                 Result.Code,
+                                 Cut,
+                                 Body_Last,
+                                 Previous_Entry,
+                                 B);
                            end if;
                         end;
                      end;
                      A := S;
-                     pragma Assert (Static => (if Status = Success then Optional_Shape
-                       (Nodes, N.Left, Result.Code, Base, Result.Count, Next, A, K)));
+                     pragma
+                       Assert
+                         (Static =>
+                            (if Status = Success
+                             then
+                               Optional_Shape
+                                 (Nodes,
+                                  N.Left,
+                                  Result.Code,
+                                  Base,
+                                  Result.Count,
+                                  Next,
+                                  A,
+                                  K)));
                   end loop;
                end if;
-               pragma Assert (Static => (if Status = Success then Tail_Shape
-                 (Nodes, N.Left, Result.Code, Base, Result.Count, Next, A,
-                  (if N.Unlimited then 0 else N.High - N.Low), N.Unlimited)));
+               pragma
+                 Assert
+                   (Static =>
+                      (if Status = Success
+                       then
+                         Tail_Shape
+                           (Nodes,
+                            N.Left,
+                            Result.Code,
+                            Base,
+                            Result.Count,
+                            Next,
+                            A,
+                            (if N.Unlimited then 0 else N.High - N.Low),
+                            N.Unlimited)));
                declare
-                  Tail_Last : constant State_Id := Result.Count with Ghost => Static;
-                  Tail_Entry : constant State_Id := A with Ghost => Static;
-                  Tail_Code : constant Code_Array := Result.Code with Ghost => Static;
+                  Tail_Last  : constant State_Id := Result.Count
+                  with Ghost => Static;
+                  Tail_Entry : constant State_Id := A
+                  with Ghost => Static;
+                  Tail_Code  : constant Code_Array := Result.Code
+                  with Ghost => Static;
                begin
                   if Status = Success then
                      Lemma_Tail_Frame
-                       (Nodes, N.Left, Result.Code, Tail_Code, Base, Tail_Last,
-                        Next, Tail_Entry, (if N.Unlimited then 0 else N.High - N.Low), N.Unlimited);
+                       (Nodes,
+                        N.Left,
+                        Result.Code,
+                        Tail_Code,
+                        Base,
+                        Tail_Last,
+                        Next,
+                        Tail_Entry,
+                        (if N.Unlimited then 0 else N.High - N.Low),
+                        N.Unlimited);
                   end if;
-               for K in 1 .. N.Low loop
-                  pragma
-                    Loop_Invariant (not Result.Valid and Links_Valid (Result));
-                  pragma
-                    Loop_Invariant (Result.Count >= Result.Count'Loop_Entry);
-                  pragma
-                    Loop_Invariant
-                      (Static =>
-                         (for all J in 1 .. Result.Count'Loop_Entry =>
-                            Result.Code (J) = Result.Code'Loop_Entry (J)));
-                  pragma
-                    Loop_Invariant
-                      (Status in Success | State_Limit | Expansion_Limit);
-                  pragma Loop_Invariant
-                    (if Status'Loop_Entry /= Success then Status = Status'Loop_Entry);
-                  pragma
-                    Loop_Invariant
-                      (Static =>
-                         (if Status = Success
-                          then
-                            (A = Next or A > Base)
-                            and Fragment_Closed (Result, Base, Next)));
-                  pragma Loop_Invariant (A <= Result.Count);
-                  pragma
-                    Loop_Invariant
-                      (if Status = Success and Next > 0 then A > 0);
-                  pragma Loop_Invariant
-                    (Static => (if Status = Success then Copies_Shape
-                      (Nodes, N.Left, Result.Code, Tail_Last, Result.Count, Tail_Entry, A, K - 1)));
-                  declare
-                     Previous_Code : constant Code_Array := Result.Code with Ghost => Static;
-                     Cut : constant State_Id := Result.Count with Ghost => Static;
-                     Previous_Entry : constant State_Id := A with Ghost => Static;
-                  begin
-                     Build (N.Left, A, B);
-                     if Status = Success then
-                        Lemma_Copies_Frame
-                          (Nodes, N.Left, Previous_Code, Result.Code,
-                           Tail_Last, Cut, Tail_Entry, Previous_Entry, K - 1);
-                        Lemma_Copies_Join
-                          (Nodes, N.Left, Result.Code, Tail_Last, Cut, Result.Count,
-                           Tail_Entry, Previous_Entry, B, K);
-                     end if;
-                  end;
-                  A := B;
-                  pragma Assert (Static => (if Status = Success then Copies_Shape
-                    (Nodes, N.Left, Result.Code, Tail_Last, Result.Count, Tail_Entry, A, K)));
-               end loop;
+                  for K in 1 .. N.Low loop
+                     pragma
+                       Loop_Invariant
+                         (not Result.Valid and Links_Valid (Result));
+                     pragma
+                       Loop_Invariant
+                         (Result.Count >= Result.Count'Loop_Entry);
+                     pragma
+                       Loop_Invariant
+                         (Static =>
+                            (for all J in 1 .. Result.Count'Loop_Entry =>
+                               Result.Code (J) = Result.Code'Loop_Entry (J)));
+                     pragma
+                       Loop_Invariant
+                         (Status in Success | State_Limit | Expansion_Limit);
+                     pragma
+                       Loop_Invariant
+                         (if Status'Loop_Entry /= Success
+                            then Status = Status'Loop_Entry);
+                     pragma
+                       Loop_Invariant
+                         (Static =>
+                            (if Status = Success
+                             then
+                               (A = Next or A > Base)
+                               and Fragment_Closed (Result, Base, Next)));
+                     pragma Loop_Invariant (A <= Result.Count);
+                     pragma
+                       Loop_Invariant
+                         (if Status = Success and Next > 0 then A > 0);
+                     pragma
+                       Loop_Invariant
+                         (Static =>
+                            (if Status = Success
+                             then
+                               Copies_Shape
+                                 (Nodes,
+                                  N.Left,
+                                  Result.Code,
+                                  Tail_Last,
+                                  Result.Count,
+                                  Tail_Entry,
+                                  A,
+                                  K - 1)));
+                     declare
+                        Previous_Code  : constant Code_Array := Result.Code
+                        with Ghost => Static;
+                        Cut            : constant State_Id := Result.Count
+                        with Ghost => Static;
+                        Previous_Entry : constant State_Id := A
+                        with Ghost => Static;
+                     begin
+                        Build (N.Left, A, B);
+                        if Status = Success then
+                           Lemma_Copies_Frame
+                             (Nodes,
+                              N.Left,
+                              Previous_Code,
+                              Result.Code,
+                              Tail_Last,
+                              Cut,
+                              Tail_Entry,
+                              Previous_Entry,
+                              K - 1);
+                           Lemma_Copies_Join
+                             (Nodes,
+                              N.Left,
+                              Result.Code,
+                              Tail_Last,
+                              Cut,
+                              Result.Count,
+                              Tail_Entry,
+                              Previous_Entry,
+                              B,
+                              K);
+                        end if;
+                     end;
+                     A := B;
+                     pragma
+                       Assert
+                         (Static =>
+                            (if Status = Success
+                             then
+                               Copies_Shape
+                                 (Nodes,
+                                  N.Left,
+                                  Result.Code,
+                                  Tail_Last,
+                                  Result.Count,
+                                  Tail_Entry,
+                                  A,
+                                  K)));
+                  end loop;
                   if Status = Success then
                      Lemma_Tail_Frame
-                       (Nodes, N.Left, Tail_Code, Result.Code, Base, Tail_Last,
-                        Next, Tail_Entry, (if N.Unlimited then 0 else N.High - N.Low), N.Unlimited);
+                       (Nodes,
+                        N.Left,
+                        Tail_Code,
+                        Result.Code,
+                        Base,
+                        Tail_Last,
+                        Next,
+                        Tail_Entry,
+                        (if N.Unlimited then 0 else N.High - N.Low),
+                        N.Unlimited);
                      Lemma_Repeat_Join
-                       (Nodes, Id, Result.Code, Base, Tail_Last, Result.Count, Next, Tail_Entry, A);
+                       (Nodes,
+                        Id,
+                        Result.Code,
+                        Base,
+                        Tail_Last,
+                        Result.Count,
+                        Next,
+                        Tail_Entry,
+                        A);
                   end if;
                end;
                Entry_State := A;
@@ -3518,14 +4556,15 @@ package body Spark_Re_Trees.Matching with SPARK_Mode is
       Target            : State_Id;
       At_First, At_Last : Boolean) return Boolean
    is (Target /= 0
-       and then
-         (case Self.Code (Source).Op is
-            when Split    =>
-              Target = Self.Code (Source).Next_1
-              or Target = Self.Code (Source).Next_2,
-            when At_Start => At_First and Target = Self.Code (Source).Next_1,
-            when At_End   => At_Last and Target = Self.Code (Source).Next_1,
-            when others   => False))
+       and then (case Self.Code (Source).Op is
+                   when Split    =>
+                     Target = Self.Code (Source).Next_1
+                     or Target = Self.Code (Source).Next_2,
+                   when At_Start =>
+                     At_First and Target = Self.Code (Source).Next_1,
+                   when At_End   =>
+                     At_Last and Target = Self.Code (Source).Next_1,
+                   when others   => False))
    with Ghost;
 
    --  Declarative bounded-path semantics, independent of the worklist.
@@ -3537,16 +4576,22 @@ package body Spark_Re_Trees.Matching with SPARK_Mode is
       Target            : State_Id;
       Steps             : Natural) return Boolean
    is (Target in 1 .. Self.Count
-       and then
-         (Seeds (Target)
-          or else
-            (Steps > 0
-             and then
-               (for some Source in 1 .. Self.Count =>
-                  Epsilon_Edge (Self, Source, Target, At_First, At_Last)
-                  and then
-                    Epsilon_Reach
-                      (Self, Seeds, At_First, At_Last, Source, Steps - 1)))))
+       and then (Seeds (Target)
+                 or else (Steps > 0
+                          and then (for some Source in 1 .. Self.Count =>
+                                      Epsilon_Edge
+                                        (Self,
+                                         Source,
+                                         Target,
+                                         At_First,
+                                         At_Last)
+                                      and then Epsilon_Reach
+                                                 (Self,
+                                                  Seeds,
+                                                  At_First,
+                                                  At_Last,
+                                                  Source,
+                                                  Steps - 1)))))
    with Ghost => Static, Subprogram_Variant => (Decreases => Steps);
 
    --  Ada array equality concerns the declared index range. Establish that
@@ -3615,8 +4660,8 @@ package body Spark_Re_Trees.Matching with SPARK_Mode is
      Subprogram_Variant => (Decreases => Steps),
      Pre                =>
        Epsilon_Closed (Self, Reached, At_First, At_Last)
-       and
-         (for all Id in 1 .. Self.Count => (if Seeds (Id) then Reached (Id))),
+       and (for all Id in 1 .. Self.Count =>
+              (if Seeds (Id) then Reached (Id))),
      Post               =>
        (for all Target in 1 .. Self.Count =>
           (if Epsilon_Reach (Self, Seeds, At_First, At_Last, Target, Steps)
@@ -3707,11 +4752,10 @@ package body Spark_Re_Trees.Matching with SPARK_Mode is
           (Static =>
              Outside_Empty (Self, Reached)
              and Epsilon_Closed (Self, Reached, At_First, At_Last)
-             and
-               (for all Id in State_Id =>
-                  Reached (Id)
-                  = Epsilon_Reach
-                      (Self, Seeds, At_First, At_Last, Id, Self.Count)));
+             and (for all Id in State_Id =>
+                    Reached (Id)
+                    = Epsilon_Reach
+                        (Self, Seeds, At_First, At_Last, Id, Self.Count)));
       --  Append-only worklist. Each reached state has exactly one slot;
       --  processed slots form a prefix. No linked-list acyclicity assumption.
       Pending : Links := [others => 0];
@@ -3731,25 +4775,23 @@ package body Spark_Re_Trees.Matching with SPARK_Mode is
             (if Reached (Id)
              then
                Depth (Id) <= Limit
-               and then
-                 Epsilon_Reach
-                   (Self, Seeds, At_First, At_Last, Id, Depth (Id))))
+               and then Epsilon_Reach
+                          (Self, Seeds, At_First, At_Last, Id, Depth (Id))))
       with Ghost => Static;
 
       function Queue_Valid return Boolean
       is (Done <= Tail
           and then Tail <= Self.Count
           and then Tail = Cardinality (Reached, Self.Count)
-          and then
-            (for all I in 1 .. Tail =>
-               Pending (I) in 1 .. Self.Count
-               and then Reached (Pending (I))
-               and then Rank (Pending (I)) = I)
-          and then
-            (for all Id in 1 .. Self.Count =>
-               (if Reached (Id)
-                then
-                  Rank (Id) in 1 .. Tail and then Pending (Rank (Id)) = Id)))
+          and then (for all I in 1 .. Tail =>
+                      Pending (I) in 1 .. Self.Count
+                      and then Reached (Pending (I))
+                      and then Rank (Pending (I)) = I)
+          and then (for all Id in 1 .. Self.Count =>
+                      (if Reached (Id)
+                       then
+                         Rank (Id) in 1 .. Tail
+                         and then Pending (Rank (Id)) = Id)))
       with Ghost => Static;
 
       function Processed_Closed return Boolean
@@ -3767,15 +4809,13 @@ package body Spark_Re_Trees.Matching with SPARK_Mode is
              and Certified
              and Queue_Valid
              and Id <= Self.Count
-             and
-               (Id = 0
-                or else Seeds (Id)
-                or else
-                  (From in 1 .. Self.Count
-                   and then Reached (From)
-                   and then Depth (From) < Limit
-                   and then
-                     Epsilon_Edge (Self, From, Id, At_First, At_Last)))),
+             and (Id = 0
+                  or else Seeds (Id)
+                  or else (From in 1 .. Self.Count
+                           and then Reached (From)
+                           and then Depth (From) < Limit
+                           and then Epsilon_Edge
+                                      (Self, From, Id, At_First, At_Last)))),
         Post =>
           (Static =>
              Certified
@@ -3784,10 +4824,9 @@ package body Spark_Re_Trees.Matching with SPARK_Mode is
              and Done = Done'Old
              and Tail >= Tail'Old
              and (for all I in 1 .. Tail'Old => Pending (I) = Pending'Old (I))
-             and
-               (for all K in 1 .. Self.Count =>
-                  (if Reached'Old (K)
-                   then Reached (K) and Depth (K) = Depth'Old (K)))
+             and (for all K in 1 .. Self.Count =>
+                    (if Reached'Old (K)
+                     then Reached (K) and Depth (K) = Depth'Old (K)))
              and (if Id /= 0 then Reached (Id)))
       is
          Before : constant State_Set := Reached
@@ -3907,17 +4946,15 @@ package body Spark_Re_Trees.Matching with SPARK_Mode is
        (for all Target in State_Id =>
           Model_Step'Result (Target)
           = ((Restart and Target = Self.Start)
-             or else
-               (for some Source in 1 .. Self.Count =>
-                  Consumes_To (Self, Before, Byte, Source, Target))))
+             or else (for some Source in 1 .. Self.Count =>
+                        Consumes_To (Self, Before, Byte, Source, Target))))
    is
    begin
       return
         [for Target in State_Id =>
            (Restart and Target = Self.Start)
-           or else
-             (for some Source in 1 .. Self.Count =>
-                Consumes_To (Self, Before, Byte, Source, Target))];
+           or else (for some Source in 1 .. Self.Count =>
+                      Consumes_To (Self, Before, Byte, Source, Target))];
    end Model_Step;
 
    function Model_Start (Self : Program) return State_Set
@@ -3983,10 +5020,9 @@ package body Spark_Re_Trees.Matching with SPARK_Mode is
           Model_Closure (Self, Seeds, At_First, At_Last),
           At_First,
           At_Last)
-       and
-         (for all Id in 1 .. Self.Count =>
-            (if Seeds (Id)
-             then Model_Closure (Self, Seeds, At_First, At_Last) (Id)))
+       and (for all Id in 1 .. Self.Count =>
+              (if Seeds (Id)
+               then Model_Closure (Self, Seeds, At_First, At_Last) (Id)))
    is
       Reached : State_Set;
    begin
@@ -4008,8 +5044,8 @@ package body Spark_Re_Trees.Matching with SPARK_Mode is
        and then Source <= Self.Count
        and then Target <= Self.Count
        and then Model_States (Self, Text, Whole, Offset) (Source)
-       and then
-         Epsilon_Edge (Self, Source, Target, Offset = 0, Offset = Text'Length),
+       and then Epsilon_Edge
+                  (Self, Source, Target, Offset = 0, Offset = Text'Length),
      Post  => Model_States (Self, Text, Whole, Offset) (Target)
    is
    begin
@@ -4042,13 +5078,12 @@ package body Spark_Re_Trees.Matching with SPARK_Mode is
        and then Offset < Text'Length
        and then Source <= Self.Count
        and then Target <= Self.Count
-       and then
-         Consumes_To
-           (Self,
-            Model_States (Self, Text, Whole, Offset),
-            Text (Text'First + Offset),
-            Source,
-            Target),
+       and then Consumes_To
+                  (Self,
+                   Model_States (Self, Text, Whole, Offset),
+                   Text (Text'First + Offset),
+                   Source,
+                   Target),
      Post  => Model_States (Self, Text, Whole, Offset + 1) (Target)
    is
    begin
@@ -4079,8 +5114,8 @@ package body Spark_Re_Trees.Matching with SPARK_Mode is
        and then First <= Last
        and then Last <= Text'Length
        and then Model_States (Self, Text, Whole, First) (Entry_State)
-       and then
-         Fragment_Path (Self.Code, Entry_State, Stop, Text, First, Last, Fuel),
+       and then Fragment_Path
+                  (Self.Code, Entry_State, Stop, Text, First, Last, Fuel),
      Post               => Model_States (Self, Text, Whole, Last) (Stop),
      Subprogram_Variant => (Decreases => Fuel)
    is
@@ -4210,24 +5245,22 @@ package body Spark_Re_Trees.Matching with SPARK_Mode is
        and then Offset <= Last
        and then Last <= Text'Length
        and then Epsilon_Steps <= Self.Count
-       and then
-         Epsilon_Reach
-           (Self,
-            Boundary_Seeds (Self, Text, Whole, Offset),
-            Offset = 0,
-            Offset = Text'Length,
-            Source,
-            Epsilon_Steps)
-       and then
-         Fragment_Path (Self.Code, Source, Stop, Text, Offset, Last, Fuel),
+       and then Epsilon_Reach
+                  (Self,
+                   Boundary_Seeds (Self, Text, Whole, Offset),
+                   Offset = 0,
+                   Offset = Text'Length,
+                   Source,
+                   Epsilon_Steps)
+       and then Fragment_Path
+                  (Self.Code, Source, Stop, Text, Offset, Last, Fuel),
      Post               =>
        First <= Offset
        and then (if Whole then First = 0)
-       and then
-         Total_Fuel <= Fuel + Reverse_Budget (Self, Offset, Epsilon_Steps)
-       and then
-         Fragment_Path
-           (Self.Code, Self.Start, Stop, Text, First, Last, Total_Fuel),
+       and then Total_Fuel
+                <= Fuel + Reverse_Budget (Self, Offset, Epsilon_Steps)
+       and then Fragment_Path
+                  (Self.Code, Self.Start, Stop, Text, First, Last, Total_Fuel),
      Subprogram_Variant => (Decreases => Offset, Decreases => Epsilon_Steps)
    is
       Seeds : constant State_Set := Boundary_Seeds (Self, Text, Whole, Offset);
@@ -4285,14 +5318,13 @@ package body Spark_Re_Trees.Matching with SPARK_Mode is
          for Pred in 1 .. Self.Count loop
             if Epsilon_Edge
                  (Self, Pred, Source, Offset = 0, Offset = Text'Length)
-              and then
-                Epsilon_Reach
-                  (Self,
-                   Seeds,
-                   Offset = 0,
-                   Offset = Text'Length,
-                   Pred,
-                   Epsilon_Steps - 1)
+              and then Epsilon_Reach
+                         (Self,
+                          Seeds,
+                          Offset = 0,
+                          Offset = Text'Length,
+                          Pred,
+                          Epsilon_Steps - 1)
             then
                pragma
                  Assert
@@ -4317,14 +5349,13 @@ package body Spark_Re_Trees.Matching with SPARK_Mode is
                 (for all K in 1 .. Pred =>
                    not (Epsilon_Edge
                           (Self, K, Source, Offset = 0, Offset = Text'Length)
-                        and then
-                          Epsilon_Reach
-                            (Self,
-                             Seeds,
-                             Offset = 0,
-                             Offset = Text'Length,
-                             K,
-                             Epsilon_Steps - 1)));
+                        and then Epsilon_Reach
+                                   (Self,
+                                    Seeds,
+                                    Offset = 0,
+                                    Offset = Text'Length,
+                                    K,
+                                    Epsilon_Steps - 1)));
          end loop;
       end if;
       First := 0;
@@ -4340,12 +5371,14 @@ package body Spark_Re_Trees.Matching with SPARK_Mode is
    function NFA_Accepts
      (Self : Program; Text : String; Whole : Boolean) return Boolean
    is (Self.Valid
-       and then
-         (if Whole
-          then Accepting (Self, Model_States (Self, Text, Whole, Text'Length))
-          else
-            (for some Offset in 0 .. Text'Length =>
-               Accepting (Self, Model_States (Self, Text, Whole, Offset)))));
+       and then (if Whole
+                 then
+                   Accepting
+                     (Self, Model_States (Self, Text, Whole, Text'Length))
+                 else
+                   (for some Offset in 0 .. Text'Length =>
+                      Accepting
+                        (Self, Model_States (Self, Text, Whole, Offset)))));
 
    procedure Lemma_Model_Entry
      (Self : Program; Text : String; Whole : Boolean; Offset : Natural)
@@ -4392,8 +5425,8 @@ package body Spark_Re_Trees.Matching with SPARK_Mode is
        and then First <= Last
        and then Last <= Text'Length
        and then (if Whole then First = 0 and Last = Text'Length)
-       and then
-         Fragment_Path (Self.Code, Self.Start, Stop, Text, First, Last, Fuel),
+       and then Fragment_Path
+                  (Self.Code, Self.Start, Stop, Text, First, Last, Fuel),
      Post  =>
        NFA_Accepts (Self, Text, Whole)
        and (if Whole then Full_Match (Self, Text) else Search (Self, Text))
@@ -4422,8 +5455,8 @@ package body Spark_Re_Trees.Matching with SPARK_Mode is
        and then Last <= Text'Length
        and then (if Whole then First = 0 and Last = Text'Length)
        and then Fuel <= Reverse_Budget (Self, Last, Self.Count)
-       and then
-         Fragment_Path (Self.Code, Self.Start, Stop, Text, First, Last, Fuel)
+       and then Fragment_Path
+                  (Self.Code, Self.Start, Stop, Text, First, Last, Fuel)
    is
    begin
       for Offset in 0 .. Text'Length loop
@@ -4453,8 +5486,8 @@ package body Spark_Re_Trees.Matching with SPARK_Mode is
                  Loop_Invariant
                    (for all K in 1 .. Id =>
                       not (Self.Code (K).Op = Accept_State
-                           and then
-                             Model_States (Self, Text, Whole, Offset) (K)));
+                           and then Model_States (Self, Text, Whole, Offset)
+                                      (K)));
             end loop;
          end if;
          pragma
@@ -4470,7 +5503,6 @@ package body Spark_Re_Trees.Matching with SPARK_Mode is
       Fuel := 0;
       pragma Assert (False);
    end Lemma_Accepts_Path;
-
 
    procedure Tree_Match_Span
      (Nodes       : Tree;
@@ -4580,8 +5612,7 @@ package body Spark_Re_Trees.Matching with SPARK_Mode is
       Text   : String;
       Whole  : Boolean;
       Result : out Program;
-      Status : out Compile_Status)
-   is
+      Status : out Compile_Status) is
    begin
       Compile_Tree (Nodes, Root, Result, Status);
       if Status = Success then

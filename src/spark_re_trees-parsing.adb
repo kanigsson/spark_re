@@ -48,21 +48,19 @@ is
        and then Decimal_Digits (Pattern, First, Last)
        and then Decimal_Value (Pattern, First, Last) = Value
        and then Value <= Max_Repetition
-       and then
-         (Last = Pattern'Length
-          or else Byte_At (Pattern, Last) not in '0' .. '9'))
+       and then (Last = Pattern'Length
+                 or else Byte_At (Pattern, Last) not in '0' .. '9'))
    with Ghost => Static;
 
    function Number_Error
      (Pattern : String; First, Stop : Natural) return Boolean
    is ((First = Stop
-        and then
-          (Stop = Pattern'Length
-           or else Byte_At (Pattern, Stop) not in '0' .. '9'))
-       or else
-         (Stop < Pattern'Length
-          and then Decimal_Digits (Pattern, First, Stop + 1)
-          and then Decimal_Value (Pattern, First, Stop + 1) > Max_Repetition))
+        and then (Stop = Pattern'Length
+                  or else Byte_At (Pattern, Stop) not in '0' .. '9'))
+       or else (Stop < Pattern'Length
+                and then Decimal_Digits (Pattern, First, Stop + 1)
+                and then Decimal_Value (Pattern, First, Stop + 1)
+                         > Max_Repetition))
    with Ghost => Static, Pre => First <= Stop and Stop <= Pattern'Length;
 
    function Numeral_End (Pattern : String; First : Natural) return Natural
@@ -77,9 +75,9 @@ is
      Post               =>
        Numeral_End'Result in First .. Pattern'Length
        and then Decimal_Digits (Pattern, First, Numeral_End'Result)
-       and then
-         (Numeral_End'Result = Pattern'Length
-          or else Byte_At (Pattern, Numeral_End'Result) not in '0' .. '9'),
+       and then (Numeral_End'Result = Pattern'Length
+                 or else Byte_At (Pattern, Numeral_End'Result)
+                         not in '0' .. '9'),
      Subprogram_Variant => (Decreases => Pattern'Length - First);
 
    procedure Lemma_Numeral_Step (Pattern : String; First : Natural)
@@ -147,12 +145,11 @@ is
         Postcondition
           (Static =>
              (Status = Success) = Numeral_Valid (Pattern, Pos'Old)
-             and then
-               (if Status = Success
-                then
-                  Pos = Numeral_End (Pattern, Pos'Old)
-                  and then Number_Syntax (Pattern, Pos'Old, Pos, Value)
-                else Number_Error (Pattern, Pos'Old, Pos)));
+             and then (if Status = Success
+                       then
+                         Pos = Numeral_End (Pattern, Pos'Old)
+                         and then Number_Syntax (Pattern, Pos'Old, Pos, Value)
+                       else Number_Error (Pattern, Pos'Old, Pos)));
       First  : constant Natural := Pos
       with Ghost => Static;
       Finish : constant Natural := Numeral_End (Pattern, Pos)
@@ -199,13 +196,13 @@ is
 
    function Class_Unit_Valid (Pattern : String; First : Natural) return Boolean
    is (First < Pattern'Length
-       and then
-         (if Byte_At (Pattern, First) = '\'
-          then First < Pattern'Length - 1
-          else
-            not (Byte_At (Pattern, First) = '['
-                 and then First < Pattern'Length - 1
-                 and then Byte_At (Pattern, First + 1) in ':' | '.' | '=')))
+       and then (if Byte_At (Pattern, First) = '\'
+                 then First < Pattern'Length - 1
+                 else
+                   not (Byte_At (Pattern, First) = '['
+                        and then First < Pattern'Length - 1
+                        and then Byte_At (Pattern, First + 1)
+                                 in ':' | '.' | '=')))
    with Ghost => Static, Pre => First <= Pattern'Length;
 
    function Class_Unit_End (Pattern : String; First : Natural) return Natural
@@ -240,11 +237,10 @@ is
         Postcondition
           (Static =>
              (Status = Success) = Class_Unit_Valid (Pattern, Pos'Old)
-             and then
-               (if Status = Success
-                then
-                  Pos = Class_Unit_End (Pattern, Pos'Old)
-                  and C = Class_Unit_Byte (Pattern, Pos'Old)));
+             and then (if Status = Success
+                       then
+                         Pos = Class_Unit_End (Pattern, Pos'Old)
+                         and C = Class_Unit_Byte (Pattern, Pos'Old)));
    begin
       Status := Success;
       C := Character'Val (0);
@@ -279,14 +275,14 @@ is
    function Class_Piece_Valid
      (Pattern : String; First : Natural) return Boolean
    is (Class_Unit_Valid (Pattern, First)
-       and then
-         (if Range_Follows (Pattern, Class_Unit_End (Pattern, First))
-          then
-            Class_Unit_Valid (Pattern, Class_Unit_End (Pattern, First) + 1)
-            and then
-              Class_Unit_Byte (Pattern, First)
-              <= Class_Unit_Byte
-                   (Pattern, Class_Unit_End (Pattern, First) + 1)))
+       and then (if Range_Follows (Pattern, Class_Unit_End (Pattern, First))
+                 then
+                   Class_Unit_Valid
+                     (Pattern, Class_Unit_End (Pattern, First) + 1)
+                   and then Class_Unit_Byte (Pattern, First)
+                            <= Class_Unit_Byte
+                                 (Pattern,
+                                  Class_Unit_End (Pattern, First) + 1)))
    with Ghost => Static, Pre => First <= Pattern'Length;
 
    function Class_Piece_End (Pattern : String; First : Natural) return Natural
@@ -325,12 +321,11 @@ is
         Postcondition
           (Static =>
              (Status = Success) = Class_Piece_Valid (Pattern, Pos'Old)
-             and then
-               (if Status = Success
-                then
-                  Pos = Class_Piece_End (Pattern, Pos'Old)
-                  and Lo = Class_Unit_Byte (Pattern, Pos'Old)
-                  and Hi = Class_Piece_High (Pattern, Pos'Old)));
+             and then (if Status = Success
+                       then
+                         Pos = Class_Piece_End (Pattern, Pos'Old)
+                         and Lo = Class_Unit_Byte (Pattern, Pos'Old)
+                         and Hi = Class_Piece_High (Pattern, Pos'Old)));
    begin
       Scan_Class_Byte (Pattern, Pos, Lo, Status);
       Hi := Lo;
@@ -352,14 +347,14 @@ is
    function Class_Tail_Valid
      (Pattern : String; Pos : Natural; Initial : Boolean) return Boolean
    is (Pos < Pattern'Length
-       and then
-         (if not Initial and then Byte_At (Pattern, Pos) = ']'
-          then True
-          else
-            Class_Piece_Valid (Pattern, Pos)
-            and then
-              Class_Tail_Valid
-                (Pattern, Class_Piece_End (Pattern, Pos), False)))
+       and then (if not Initial and then Byte_At (Pattern, Pos) = ']'
+                 then True
+                 else
+                   Class_Piece_Valid (Pattern, Pos)
+                   and then Class_Tail_Valid
+                              (Pattern,
+                               Class_Piece_End (Pattern, Pos),
+                               False)))
    with
      Ghost              => Static,
      Pre                => Pos <= Pattern'Length,
@@ -384,8 +379,8 @@ is
        then False
        else
          B in Class_Unit_Byte (Pattern, Pos) .. Class_Piece_High (Pattern, Pos)
-         or else
-           Class_Tail_Has (Pattern, Class_Piece_End (Pattern, Pos), False, B))
+         or else Class_Tail_Has
+                   (Pattern, Class_Piece_End (Pattern, Pos), False, B))
    with
      Ghost              => Static,
      Pre                =>
@@ -412,13 +407,13 @@ is
    function Class_Syntax
      (Pattern : String; First, Last : Natural; Bytes : Byte_Set) return Boolean
    is (Class_Valid (Pattern, First)
-       and then
-         Last = Class_Tail_End (Pattern, Class_Body (Pattern, First), True)
-       and then
-         (for all B in Character =>
-            Bytes (B)
-            = (Class_Tail_Has (Pattern, Class_Body (Pattern, First), True, B)
-               /= Class_Negated (Pattern, First))))
+       and then Last
+                = Class_Tail_End (Pattern, Class_Body (Pattern, First), True)
+       and then (for all B in Character =>
+                   Bytes (B)
+                   = (Class_Tail_Has
+                        (Pattern, Class_Body (Pattern, First), True, B)
+                      /= Class_Negated (Pattern, First))))
    with Ghost => Static, Pre => First <= Pattern'Length;
 
    procedure Scan_Class
@@ -436,9 +431,8 @@ is
         Postcondition
           (Static =>
              (Status = Success) = Class_Valid (Pattern, Pos'Old)
-             and then
-               (if Status = Success
-                then Class_Syntax (Pattern, Pos'Old, Pos, Bytes)));
+             and then (if Status = Success
+                       then Class_Syntax (Pattern, Pos'Old, Pos, Bytes)));
       Start   : constant Natural := Pos
       with Ghost => Static;
       Negated : Boolean := False;
@@ -470,12 +464,15 @@ is
                  then
                    Class_Tail_End (Pattern, Class_Body (Pattern, Start), True)
                    = Class_Tail_End (Pattern, Pos, Initial)
-                   and then
-                     (for all B in Character =>
-                        Class_Tail_Has
-                          (Pattern, Class_Body (Pattern, Start), True, B)
-                        = (Bytes (B)
-                           or Class_Tail_Has (Pattern, Pos, Initial, B)))));
+                   and then (for all B in Character =>
+                               Class_Tail_Has
+                                 (Pattern,
+                                  Class_Body (Pattern, Start),
+                                  True,
+                                  B)
+                               = (Bytes (B)
+                                  or Class_Tail_Has
+                                       (Pattern, Pos, Initial, B)))));
          pragma Loop_Variant (Decreases => Pattern'Length - Pos);
          declare
             Before    : constant Natural := Pos
@@ -526,22 +523,23 @@ is
        begin
          Numeral_Valid (Pattern, First)
          and then Sep < Pattern'Length
-         and then
-           (if Byte_At (Pattern, Sep) = '}'
-            then True
-            elsif Byte_At (Pattern, Sep) /= ','
-              or else Sep = Pattern'Length - 1
-            then False
-            elsif Byte_At (Pattern, Sep + 1) = '}'
-            then True
-            else
-              Numeral_Valid (Pattern, Sep + 1)
-              and then Numeral_End (Pattern, Sep + 1) < Pattern'Length
-              and then Byte_At (Pattern, Numeral_End (Pattern, Sep + 1)) = '}'
-              and then
-                Numeral_Value (Pattern, First)
-                <= Decimal_Value
-                     (Pattern, Sep + 1, Numeral_End (Pattern, Sep + 1))))
+         and then (if Byte_At (Pattern, Sep) = '}'
+                   then True
+                   elsif Byte_At (Pattern, Sep) /= ','
+                     or else Sep = Pattern'Length - 1
+                   then False
+                   elsif Byte_At (Pattern, Sep + 1) = '}'
+                   then True
+                   else
+                     Numeral_Valid (Pattern, Sep + 1)
+                     and then Numeral_End (Pattern, Sep + 1) < Pattern'Length
+                     and then Byte_At (Pattern, Numeral_End (Pattern, Sep + 1))
+                              = '}'
+                     and then Numeral_Value (Pattern, First)
+                              <= Decimal_Value
+                                   (Pattern,
+                                    Sep + 1,
+                                    Numeral_End (Pattern, Sep + 1))))
    with Ghost => Static, Pre => First <= Pattern'Length;
    --  Every digit span here is one that Numeral_End's postcondition already
    --  certifies, so match that certificate rather than expanding it per byte.
@@ -551,11 +549,10 @@ is
 
    function Quantifier_Valid (Pattern : String; First : Natural) return Boolean
    is (First < Pattern'Length
-       and then
-         (case Byte_At (Pattern, First) is
-            when '*' | '+' | '?' => True,
-            when '{'             => Bounds_Valid (Pattern, First + 1),
-            when others          => False))
+       and then (case Byte_At (Pattern, First) is
+                   when '*' | '+' | '?' => True,
+                   when '{'             => Bounds_Valid (Pattern, First + 1),
+                   when others          => False))
    with Ghost => Static, Pre => First <= Pattern'Length;
 
    type Quantifier_Value is record
@@ -591,9 +588,9 @@ is
        First <= Pattern'Length and then Quantifier_Valid (Pattern, First),
      Post  =>
        Quantifier_Model'Result.Last in First + 1 .. Pattern'Length
-       and then
-         (Quantifier_Model'Result.Unlimited
-          or Quantifier_Model'Result.Low <= Quantifier_Model'Result.High);
+       and then (Quantifier_Model'Result.Unlimited
+                 or Quantifier_Model'Result.Low
+                    <= Quantifier_Model'Result.High);
 
    procedure Scan_Quantifier
      (Pattern : String;
@@ -616,15 +613,13 @@ is
         Postcondition
           (Static =>
              (Status = Success) = Quantifier_Valid (Pattern, Pos'Old)
-             and then
-               (if Status = Success
-                then
-                  Pos = Quantifier_Model (Pattern, Pos'Old).Last
-                  and N.Low = Quantifier_Model (Pattern, Pos'Old).Low
-                  and N.High = Quantifier_Model (Pattern, Pos'Old).High
-                  and
-                    N.Unlimited
-                    = Quantifier_Model (Pattern, Pos'Old).Unlimited));
+             and then (if Status = Success
+                       then
+                         Pos = Quantifier_Model (Pattern, Pos'Old).Last
+                         and N.Low = Quantifier_Model (Pattern, Pos'Old).Low
+                         and N.High = Quantifier_Model (Pattern, Pos'Old).High
+                         and N.Unlimited
+                             = Quantifier_Model (Pattern, Pos'Old).Unlimited));
       First : constant Natural := Pos
       with Ghost => Static;
       C     : constant Character := Byte_At (Pattern, Pos);
@@ -698,43 +693,43 @@ is
 
    function Leaf_Valid (Pattern : String; First : Natural) return Boolean
    is (First < Pattern'Length
-       and then
-         (case Byte_At (Pattern, First) is
-            when '['                                                 =>
-              Class_Valid (Pattern, First),
-            when '\'                                                 =>
-              First < Pattern'Length - 1
-              and then Escapable (Byte_At (Pattern, First + 1)),
-            when '(' | ')' | '|' | '*' | '+' | '?' | '{' | '}' | ']' => False,
-            when others                                              => True))
+       and then (case Byte_At (Pattern, First) is
+                   when '['                                                 =>
+                     Class_Valid (Pattern, First),
+                   when '\'                                                 =>
+                     First < Pattern'Length - 1
+                     and then Escapable (Byte_At (Pattern, First + 1)),
+                   when '(' | ')' | '|' | '*' | '+' | '?' | '{' | '}' | ']' =>
+                     False,
+                   when others                                              =>
+                     True))
    with Ghost => Static, Pre => First <= Pattern'Length;
 
    function Leaf_Syntax
      (Pattern : String; First, Last : Natural; N : Node) return Boolean
    is (Leaf_Valid (Pattern, First)
-       and then
-         (case Byte_At (Pattern, First) is
-            when '['    =>
-              N.Kind = Bytes_Node
-              and then Class_Syntax (Pattern, First, Last, N.Bytes),
-            when '^'    => Last = First + 1 and N.Kind = Start_Node,
-            when '$'    => Last = First + 1 and N.Kind = End_Node,
-            when '.'    =>
-              Last = First + 1
-              and N.Kind = Bytes_Node
-              and N.Bytes = Byte_Set'(others => True),
-            when '\'    =>
-              Last = First + 2
-              and then N.Kind = Bytes_Node
-              and then
-                (for all B in Character =>
-                   N.Bytes (B) = (B = Byte_At (Pattern, First + 1))),
-            when others =>
-              Last = First + 1
-              and then N.Kind = Bytes_Node
-              and then
-                (for all B in Character =>
-                   N.Bytes (B) = (B = Byte_At (Pattern, First)))))
+       and then (case Byte_At (Pattern, First) is
+                   when '['    =>
+                     N.Kind = Bytes_Node
+                     and then Class_Syntax (Pattern, First, Last, N.Bytes),
+                   when '^'    => Last = First + 1 and N.Kind = Start_Node,
+                   when '$'    => Last = First + 1 and N.Kind = End_Node,
+                   when '.'    =>
+                     Last = First + 1
+                     and N.Kind = Bytes_Node
+                     and N.Bytes = Byte_Set'(others => True),
+                   when '\'    =>
+                     Last = First + 2
+                     and then N.Kind = Bytes_Node
+                     and then (for all B in Character =>
+                                 N.Bytes (B)
+                                 = (B = Byte_At (Pattern, First + 1))),
+                   when others =>
+                     Last = First + 1
+                     and then N.Kind = Bytes_Node
+                     and then (for all B in Character =>
+                                 N.Bytes (B)
+                                 = (B = Byte_At (Pattern, First)))))
    with Ghost => Static, Pre => First <= Pattern'Length;
 
    procedure Scan_Leaf
@@ -745,9 +740,8 @@ is
    with
      Pre  =>
        Pos < Pattern'Length
-       and then
-         Byte_At (Pattern, Pos)
-         not in '(' | ')' | '|' | '*' | '+' | '?' | '{' | '}' | ']',
+       and then Byte_At (Pattern, Pos)
+                not in '(' | ')' | '|' | '*' | '+' | '?' | '{' | '}' | ']',
      Post =>
        Pos in Pos'Old + 1 .. Pattern'Length
        and then Status in Success | Syntax_Error
@@ -759,9 +753,8 @@ is
         Postcondition
           (Static =>
              (Status = Success) = Leaf_Valid (Pattern, Pos'Old)
-             and then
-               (if Status = Success
-                then Leaf_Syntax (Pattern, Pos'Old, Pos, N)));
+             and then (if Status = Success
+                       then Leaf_Syntax (Pattern, Pos'Old, Pos, N)));
       C : constant Character := Byte_At (Pattern, Pos);
    begin
       N := (Kind => Bytes_Node, others => <>);
@@ -818,76 +811,73 @@ is
    is (case Level is
          when Atom_Grammar   =>
            Leaf_Syntax (Pattern, First, Last, Nodes (Id))
-           or else
-             (Last - First >= 2
-              and then Byte_At (Pattern, First) = '('
-              and then Byte_At (Pattern, Last - 1) = ')'
-              and then
-                Grammar
-                  (Pattern, Nodes, Id, First + 1, Last - 1, Expr_Grammar)),
+           or else (Last - First >= 2
+                    and then Byte_At (Pattern, First) = '('
+                    and then Byte_At (Pattern, Last - 1) = ')'
+                    and then Grammar
+                               (Pattern,
+                                Nodes,
+                                Id,
+                                First + 1,
+                                Last - 1,
+                                Expr_Grammar)),
          when Factor_Grammar =>
            Grammar (Pattern, Nodes, Id, First, Last, Atom_Grammar)
-           or else
-             (Nodes (Id).Kind = Repeat_Node
-              and then Last - First >= 2
-              and then
-                (for some Middle in First + 1 .. Last - 1 =>
-                   Grammar
-                     (Pattern,
-                      Nodes,
-                      Nodes (Id).Left,
-                      First,
-                      Middle,
-                      Atom_Grammar)
-                   and then
-                     Quantifier_Syntax (Pattern, Middle, Last, Nodes (Id)))),
+           or else (Nodes (Id).Kind = Repeat_Node
+                    and then Last - First >= 2
+                    and then (for some Middle in First + 1 .. Last - 1 =>
+                                Grammar
+                                  (Pattern,
+                                   Nodes,
+                                   Nodes (Id).Left,
+                                   First,
+                                   Middle,
+                                   Atom_Grammar)
+                                and then Quantifier_Syntax
+                                           (Pattern,
+                                            Middle,
+                                            Last,
+                                            Nodes (Id)))),
          when Term_Grammar   =>
            (First = Last and Nodes (Id).Kind = Empty_Node)
            or else Grammar (Pattern, Nodes, Id, First, Last, Factor_Grammar)
-           or else
-             (Nodes (Id).Kind = Concat_Node
-              and then First < Last
-              and then
-                (for some Middle in First .. Last - 1 =>
-                   Grammar
-                     (Pattern,
-                      Nodes,
-                      Nodes (Id).Left,
-                      First,
-                      Middle,
-                      Term_Grammar)
-                   and then
-                     Grammar
-                       (Pattern,
-                        Nodes,
-                        Nodes (Id).Right,
-                        Middle,
-                        Last,
-                        Factor_Grammar))),
+           or else (Nodes (Id).Kind = Concat_Node
+                    and then First < Last
+                    and then (for some Middle in First .. Last - 1 =>
+                                Grammar
+                                  (Pattern,
+                                   Nodes,
+                                   Nodes (Id).Left,
+                                   First,
+                                   Middle,
+                                   Term_Grammar)
+                                and then Grammar
+                                           (Pattern,
+                                            Nodes,
+                                            Nodes (Id).Right,
+                                            Middle,
+                                            Last,
+                                            Factor_Grammar))),
          when Expr_Grammar   =>
            Grammar (Pattern, Nodes, Id, First, Last, Term_Grammar)
-           or else
-             (Nodes (Id).Kind = Alt_Node
-              and then First < Last
-              and then
-                (for some Bar in First .. Last - 1 =>
-                   Byte_At (Pattern, Bar) = '|'
-                   and then
-                     Grammar
-                       (Pattern,
-                        Nodes,
-                        Nodes (Id).Left,
-                        First,
-                        Bar,
-                        Expr_Grammar)
-                   and then
-                     Grammar
-                       (Pattern,
-                        Nodes,
-                        Nodes (Id).Right,
-                        Bar + 1,
-                        Last,
-                        Term_Grammar))));
+           or else (Nodes (Id).Kind = Alt_Node
+                    and then First < Last
+                    and then (for some Bar in First .. Last - 1 =>
+                                Byte_At (Pattern, Bar) = '|'
+                                and then Grammar
+                                           (Pattern,
+                                            Nodes,
+                                            Nodes (Id).Left,
+                                            First,
+                                            Bar,
+                                            Expr_Grammar)
+                                and then Grammar
+                                           (Pattern,
+                                            Nodes,
+                                            Nodes (Id).Right,
+                                            Bar + 1,
+                                            Last,
+                                            Term_Grammar))));
 
    --  Continuations consume maximal lexical tokens and track only unmatched
    --  parentheses and whether one postfix quantifier may follow. They do not
@@ -924,25 +914,26 @@ is
               Syntax_Continuation (Pattern, Pos + 1, Depth + 1, No_Atom),
             when ')'                   =>
               Depth > 0
-              and then
-                Syntax_Continuation (Pattern, Pos + 1, Depth - 1, Plain_Atom),
+              and then Syntax_Continuation
+                         (Pattern, Pos + 1, Depth - 1, Plain_Atom),
             when '|'                   =>
               Syntax_Continuation (Pattern, Pos + 1, Depth, No_Atom),
             when '*' | '+' | '?' | '{' =>
               Pending = Plain_Atom
               and then Quantifier_Valid (Pattern, Pos)
-              and then
-                Syntax_Continuation
-                  (Pattern,
-                   Quantifier_Model (Pattern, Pos).Last,
-                   Depth,
-                   Repeated_Atom),
+              and then Syntax_Continuation
+                         (Pattern,
+                          Quantifier_Model (Pattern, Pos).Last,
+                          Depth,
+                          Repeated_Atom),
             when '}' | ']'             => False,
             when others                =>
               Leaf_Valid (Pattern, Pos)
-              and then
-                Syntax_Continuation
-                  (Pattern, Leaf_End (Pattern, Pos), Depth, Plain_Atom)))
+              and then Syntax_Continuation
+                         (Pattern,
+                          Leaf_End (Pattern, Pos),
+                          Depth,
+                          Plain_Atom)))
    with
      Ghost              => Static,
      Pre                => Depth <= Pos and Pos <= Pattern'Length,
@@ -1004,9 +995,8 @@ is
            else S.Has_Atom),
         Atom      =>
           (if S.Depth = 0
-             and then
-               (Byte_At (Pattern, S.Cursor) = '('
-                or else Leaf_Valid (Pattern, S.Cursor))
+             and then (Byte_At (Pattern, S.Cursor) = '('
+                       or else Leaf_Valid (Pattern, S.Cursor))
            then S.Cursor
            else S.Atom),
         Has_Quant =>
@@ -1100,24 +1090,21 @@ is
        Walk (Pattern, Last, S).Cursor = Last
        and then Walk (Pattern, Last, S).Depth = S.Depth
        and then (if S.Depth > 0 then Outer_Equal (Walk (Pattern, Last, S), S))
-       and then
-         (if S.Depth = 0
-          then
-            (if Level /= Expr_Grammar
-             then Bar_Equal (Walk (Pattern, Last, S), S))
-            and then
-              (if Level in Atom_Grammar | Factor_Grammar
-               then
-                 Walk (Pattern, Last, S).Has_Atom
-                 and then Walk (Pattern, Last, S).Atom = First)
-            and then
-              (if Level = Atom_Grammar
-               then not Walk (Pattern, Last, S).Has_Quant)
-            and then
-              (if Level = Term_Grammar and then First < Last
-               then
-                 Walk (Pattern, Last, S).Has_Atom
-                 and then Walk (Pattern, Last, S).Atom >= First)),
+       and then (if S.Depth = 0
+                 then
+                   (if Level /= Expr_Grammar
+                    then Bar_Equal (Walk (Pattern, Last, S), S))
+                   and then (if Level in Atom_Grammar | Factor_Grammar
+                             then
+                               Walk (Pattern, Last, S).Has_Atom
+                               and then Walk (Pattern, Last, S).Atom = First)
+                   and then (if Level = Atom_Grammar
+                             then not Walk (Pattern, Last, S).Has_Quant)
+                   and then (if Level = Term_Grammar and then First < Last
+                             then
+                               Walk (Pattern, Last, S).Has_Atom
+                               and then Walk (Pattern, Last, S).Atom
+                                        >= First)),
      Subprogram_Variant =>
        (Decreases => Id, Decreases => Last - First, Decreases => Level)
    is
@@ -1137,13 +1124,13 @@ is
                pragma
                  Assert
                    (Walk (Pattern, Last, S)
-                    = Walk_Step (Pattern, Walk (Pattern, Last - 1, M)));
+                      = Walk_Step (Pattern, Walk (Pattern, Last - 1, M)));
             end if;
             pragma
               Assert
                 (Walk (Pattern, Last, S)
-                 = (Walk_Step (Pattern, S)
-                    with delta Cursor => Last, Depth => S.Depth));
+                   = (Walk_Step (Pattern, S)
+                      with delta Cursor => Last, Depth => S.Depth));
 
          when Factor_Grammar =>
             if Grammar (Pattern, Nodes, Id, First, Last, Atom_Grammar) then
@@ -1172,15 +1159,15 @@ is
                      pragma
                        Assert
                          (Walk (Pattern, Last, S)
-                          = Walk_Step (Pattern, Walk (Pattern, Cut, S)));
+                            = Walk_Step (Pattern, Walk (Pattern, Cut, S)));
                      pragma Assert (Walk (Pattern, Last, S).Cursor = Last);
                      pragma Assert (Walk (Pattern, Last, S).Depth = S.Depth);
                      pragma
                        Assert
                          (if S.Depth = 0 and then Level = Factor_Grammar
-                          then
-                            Walk (Pattern, Last, S).Has_Atom
-                            and then Walk (Pattern, Last, S).Atom = First);
+                            then
+                              Walk (Pattern, Last, S).Has_Atom
+                              and then Walk (Pattern, Last, S).Atom = First);
                      return;
                   end if;
                   pragma
@@ -1193,9 +1180,8 @@ is
                                  First,
                                  K,
                                  Atom_Grammar)
-                              and then
-                                Quantifier_Syntax
-                                  (Pattern, K, Last, Nodes (Id))));
+                              and then Quantifier_Syntax
+                                         (Pattern, K, Last, Nodes (Id))));
                end loop;
             end if;
 
@@ -1215,14 +1201,13 @@ is
                         First,
                         Cut,
                         Term_Grammar)
-                    and then
-                      Grammar
-                        (Pattern,
-                         Nodes,
-                         Nodes (Id).Right,
-                         Cut,
-                         Last,
-                         Factor_Grammar)
+                    and then Grammar
+                               (Pattern,
+                                Nodes,
+                                Nodes (Id).Right,
+                                Cut,
+                                Last,
+                                Factor_Grammar)
                   then
                      Lemma_Grammar_Walk
                        (Pattern,
@@ -1256,14 +1241,13 @@ is
                                  First,
                                  K,
                                  Term_Grammar)
-                              and then
-                                Grammar
-                                  (Pattern,
-                                   Nodes,
-                                   Nodes (Id).Right,
-                                   K,
-                                   Last,
-                                   Factor_Grammar)));
+                              and then Grammar
+                                         (Pattern,
+                                          Nodes,
+                                          Nodes (Id).Right,
+                                          K,
+                                          Last,
+                                          Factor_Grammar)));
                end loop;
             end if;
 
@@ -1274,22 +1258,20 @@ is
             else
                for Cut in First .. Last - 1 loop
                   if Byte_At (Pattern, Cut) = '|'
-                    and then
-                      Grammar
-                        (Pattern,
-                         Nodes,
-                         Nodes (Id).Left,
-                         First,
-                         Cut,
-                         Expr_Grammar)
-                    and then
-                      Grammar
-                        (Pattern,
-                         Nodes,
-                         Nodes (Id).Right,
-                         Cut + 1,
-                         Last,
-                         Term_Grammar)
+                    and then Grammar
+                               (Pattern,
+                                Nodes,
+                                Nodes (Id).Left,
+                                First,
+                                Cut,
+                                Expr_Grammar)
+                    and then Grammar
+                               (Pattern,
+                                Nodes,
+                                Nodes (Id).Right,
+                                Cut + 1,
+                                Last,
+                                Term_Grammar)
                   then
                      Lemma_Grammar_Walk
                        (Pattern,
@@ -1317,22 +1299,20 @@ is
                     Loop_Invariant
                       (for all K in First .. Cut =>
                          not (Byte_At (Pattern, K) = '|'
-                              and then
-                                Grammar
-                                  (Pattern,
-                                   Nodes,
-                                   Nodes (Id).Left,
-                                   First,
-                                   K,
-                                   Expr_Grammar)
-                              and then
-                                Grammar
-                                  (Pattern,
-                                   Nodes,
-                                   Nodes (Id).Right,
-                                   K + 1,
-                                   Last,
-                                   Term_Grammar)));
+                              and then Grammar
+                                         (Pattern,
+                                          Nodes,
+                                          Nodes (Id).Left,
+                                          First,
+                                          K,
+                                          Expr_Grammar)
+                              and then Grammar
+                                         (Pattern,
+                                          Nodes,
+                                          Nodes (Id).Right,
+                                          K + 1,
+                                          Last,
+                                          Term_Grammar)));
                end loop;
             end if;
       end case;
@@ -1352,27 +1332,27 @@ is
       First, Last : Natural) return Boolean
    is (Leaf_Valid (Pattern, Start)
        and then Stop = Leaf_End (Pattern, Start)
-       and then
-         (case Byte_At (Pattern, Start) is
-            when '^'    => First = Last and then First = 0,
-            when '$'    => First = Last and then Last = Text'Length,
-            when others =>
-              First < Last
-              and then Last - First = 1
-              and then
-                (case Byte_At (Pattern, Start) is
-                   when '.'    => True,
-                   when '['    =>
-                     Class_Tail_Has
-                       (Pattern,
-                        Class_Body (Pattern, Start),
-                        True,
-                        Text (Text'First + First))
-                     /= Class_Negated (Pattern, Start),
-                   when '\'    =>
-                     Text (Text'First + First) = Byte_At (Pattern, Start + 1),
+       and then (case Byte_At (Pattern, Start) is
+                   when '^'    => First = Last and then First = 0,
+                   when '$'    => First = Last and then Last = Text'Length,
                    when others =>
-                     Text (Text'First + First) = Byte_At (Pattern, Start))))
+                     First < Last
+                     and then Last - First = 1
+                     and then (case Byte_At (Pattern, Start) is
+                                 when '.'    => True,
+                                 when '['    =>
+                                   Class_Tail_Has
+                                     (Pattern,
+                                      Class_Body (Pattern, Start),
+                                      True,
+                                      Text (Text'First + First))
+                                   /= Class_Negated (Pattern, Start),
+                                 when '\'    =>
+                                   Text (Text'First + First)
+                                   = Byte_At (Pattern, Start + 1),
+                                 when others =>
+                                   Text (Text'First + First)
+                                   = Byte_At (Pattern, Start))))
    with
      Ghost => Static,
      Pre   =>
@@ -1434,33 +1414,46 @@ is
        then
          (for some Middle in First .. Last =>
             Denotes (Pattern, Start, Stop, Atom_Grammar, Text, First, Middle)
-            and then
-              Repeat_Denotes
-                (Pattern,
-                 Start,
-                 Stop,
-                 Text,
-                 Middle,
-                 Last,
-                 Low - 1,
-                 (if Unlimited then High else High - 1),
-                 Unlimited))
+            and then Repeat_Denotes
+                       (Pattern,
+                        Start,
+                        Stop,
+                        Text,
+                        Middle,
+                        Last,
+                        Low - 1,
+                        (if Unlimited then High else High - 1),
+                        Unlimited))
        elsif First = Last
        then True
        elsif Unlimited
        then
          (for some Middle in First + 1 .. Last =>
             Denotes (Pattern, Start, Stop, Atom_Grammar, Text, First, Middle)
-            and then
-              Repeat_Denotes
-                (Pattern, Start, Stop, Text, Middle, Last, 0, High, True))
+            and then Repeat_Denotes
+                       (Pattern,
+                        Start,
+                        Stop,
+                        Text,
+                        Middle,
+                        Last,
+                        0,
+                        High,
+                        True))
        elsif High > 0
        then
          (for some Middle in First .. Last =>
             Denotes (Pattern, Start, Stop, Atom_Grammar, Text, First, Middle)
-            and then
-              Repeat_Denotes
-                (Pattern, Start, Stop, Text, Middle, Last, 0, High - 1, False))
+            and then Repeat_Denotes
+                       (Pattern,
+                        Start,
+                        Stop,
+                        Text,
+                        Middle,
+                        Last,
+                        0,
+                        High - 1,
+                        False))
        else False);
 
    function Denotes
@@ -1472,19 +1465,17 @@ is
    is (case Level is
          when Atom_Grammar   =>
            Leaf_Denotes (Pattern, Start, Stop, Text, First, Last)
-           or else
-             (Stop - Start >= 2
-              and then Byte_At (Pattern, Start) = '('
-              and then Byte_At (Pattern, Stop - 1) = ')'
-              and then
-                Denotes
-                  (Pattern,
-                   Start + 1,
-                   Stop - 1,
-                   Expr_Grammar,
-                   Text,
-                   First,
-                   Last)),
+           or else (Stop - Start >= 2
+                    and then Byte_At (Pattern, Start) = '('
+                    and then Byte_At (Pattern, Stop - 1) = ')'
+                    and then Denotes
+                               (Pattern,
+                                Start + 1,
+                                Stop - 1,
+                                Expr_Grammar,
+                                Text,
+                                First,
+                                Last)),
          when Factor_Grammar =>
            (if Separators (Pattern, Start, Stop).Has_Quant
               and then Separators (Pattern, Start, Stop).Quant > Start
@@ -1492,28 +1483,26 @@ is
             then
               Quantifier_Valid
                 (Pattern, Separators (Pattern, Start, Stop).Quant)
-              and then
-                Quantifier_Model
-                  (Pattern, Separators (Pattern, Start, Stop).Quant)
-                  .Last
-                = Stop
-              and then
-                Repeat_Denotes
-                  (Pattern,
-                   Start,
-                   Separators (Pattern, Start, Stop).Quant,
-                   Text,
-                   First,
-                   Last,
-                   Quantifier_Model
-                     (Pattern, Separators (Pattern, Start, Stop).Quant)
-                     .Low,
-                   Quantifier_Model
-                     (Pattern, Separators (Pattern, Start, Stop).Quant)
-                     .High,
-                   Quantifier_Model
-                     (Pattern, Separators (Pattern, Start, Stop).Quant)
-                     .Unlimited)
+              and then Quantifier_Model
+                         (Pattern, Separators (Pattern, Start, Stop).Quant)
+                         .Last
+                       = Stop
+              and then Repeat_Denotes
+                         (Pattern,
+                          Start,
+                          Separators (Pattern, Start, Stop).Quant,
+                          Text,
+                          First,
+                          Last,
+                          Quantifier_Model
+                            (Pattern, Separators (Pattern, Start, Stop).Quant)
+                            .Low,
+                          Quantifier_Model
+                            (Pattern, Separators (Pattern, Start, Stop).Quant)
+                            .High,
+                          Quantifier_Model
+                            (Pattern, Separators (Pattern, Start, Stop).Quant)
+                            .Unlimited)
             else
               Denotes (Pattern, Start, Stop, Atom_Grammar, Text, First, Last)),
          when Term_Grammar   =>
@@ -1532,15 +1521,14 @@ is
                     Text,
                     First,
                     Middle)
-                 and then
-                   Denotes
-                     (Pattern,
-                      Separators (Pattern, Start, Stop).Atom,
-                      Stop,
-                      Factor_Grammar,
-                      Text,
-                      Middle,
-                      Last))
+                 and then Denotes
+                            (Pattern,
+                             Separators (Pattern, Start, Stop).Atom,
+                             Stop,
+                             Factor_Grammar,
+                             Text,
+                             Middle,
+                             Last))
             else
               Denotes
                 (Pattern, Start, Stop, Factor_Grammar, Text, First, Last)),
@@ -1557,15 +1545,14 @@ is
                  Text,
                  First,
                  Last)
-              or else
-                Denotes
-                  (Pattern,
-                   Separators (Pattern, Start, Stop).Bar + 1,
-                   Stop,
-                   Term_Grammar,
-                   Text,
-                   First,
-                   Last)
+              or else Denotes
+                        (Pattern,
+                         Separators (Pattern, Start, Stop).Bar + 1,
+                         Stop,
+                         Term_Grammar,
+                         Text,
+                         First,
+                         Last)
             else
               Denotes
                 (Pattern, Start, Stop, Term_Grammar, Text, First, Last)));
@@ -1573,9 +1560,14 @@ is
    function Pattern_Matches
      (Pattern, Text : String; First, Last : Natural) return Boolean
    is (Pattern_Valid (Pattern)
-       and then
-         Denotes
-           (Pattern, 0, Pattern'Length, Expr_Grammar, Text, First, Last));
+       and then Denotes
+                  (Pattern,
+                   0,
+                   Pattern'Length,
+                   Expr_Grammar,
+                   Text,
+                   First,
+                   Last));
 
    procedure Lemma_Denotation
      (Pattern     : String;
@@ -1625,8 +1617,8 @@ is
        and then Low <= Max_Repetition
        and then High <= Max_Repetition
        and then (Unlimited or else Low <= High)
-       and then
-         Grammar (Pattern, Nodes, Nodes (Id).Left, Start, Stop, Atom_Grammar),
+       and then Grammar
+                  (Pattern, Nodes, Nodes (Id).Left, Start, Stop, Atom_Grammar),
      Post               =>
        Repeated_Matches (Nodes, Id, Text, First, Last, Low, High, Unlimited)
        = Repeat_Denotes
@@ -1670,26 +1662,25 @@ is
                    Matches (Nodes, Nodes (Id).Left, Text, First, K)
                    = Denotes
                        (Pattern, Start, Stop, Atom_Grammar, Text, First, K)
-                   and then
-                     Repeated_Matches
-                       (Nodes,
-                        Id,
-                        Text,
-                        K,
-                        Last,
-                        Low - 1,
-                        (if Unlimited then High else High - 1),
-                        Unlimited)
-                     = Repeat_Denotes
-                         (Pattern,
-                          Start,
-                          Stop,
-                          Text,
-                          K,
-                          Last,
-                          Low - 1,
-                          (if Unlimited then High else High - 1),
-                          Unlimited));
+                   and then Repeated_Matches
+                              (Nodes,
+                               Id,
+                               Text,
+                               K,
+                               Last,
+                               Low - 1,
+                               (if Unlimited then High else High - 1),
+                               Unlimited)
+                            = Repeat_Denotes
+                                (Pattern,
+                                 Start,
+                                 Stop,
+                                 Text,
+                                 K,
+                                 Last,
+                                 Low - 1,
+                                 (if Unlimited then High else High - 1),
+                                 Unlimited));
          end loop;
       elsif First = Last then
          null;
@@ -1723,10 +1714,18 @@ is
                    Matches (Nodes, Nodes (Id).Left, Text, First, K)
                    = Denotes
                        (Pattern, Start, Stop, Atom_Grammar, Text, First, K)
-                   and then
-                     Repeated_Matches (Nodes, Id, Text, K, Last, 0, High, True)
-                     = Repeat_Denotes
-                         (Pattern, Start, Stop, Text, K, Last, 0, High, True));
+                   and then Repeated_Matches
+                              (Nodes, Id, Text, K, Last, 0, High, True)
+                            = Repeat_Denotes
+                                (Pattern,
+                                 Start,
+                                 Stop,
+                                 Text,
+                                 K,
+                                 Last,
+                                 0,
+                                 High,
+                                 True));
          end loop;
       elsif High > 0 then
          for Middle in First .. Last loop
@@ -1758,19 +1757,18 @@ is
                    Matches (Nodes, Nodes (Id).Left, Text, First, K)
                    = Denotes
                        (Pattern, Start, Stop, Atom_Grammar, Text, First, K)
-                   and then
-                     Repeated_Matches
-                       (Nodes, Id, Text, K, Last, 0, High - 1, False)
-                     = Repeat_Denotes
-                         (Pattern,
-                          Start,
-                          Stop,
-                          Text,
-                          K,
-                          Last,
-                          0,
-                          High - 1,
-                          False));
+                   and then Repeated_Matches
+                              (Nodes, Id, Text, K, Last, 0, High - 1, False)
+                            = Repeat_Denotes
+                                (Pattern,
+                                 Start,
+                                 Stop,
+                                 Text,
+                                 K,
+                                 Last,
+                                 0,
+                                 High - 1,
+                                 False));
          end loop;
       end if;
    end Lemma_Repeat_Denotation;
@@ -1805,7 +1803,7 @@ is
             pragma
               Assert
                 (Matches (Nodes, Id, Text, First, Last)
-                 = Denotes (Pattern, Start, Stop, Level, Text, First, Last));
+                   = Denotes (Pattern, Start, Stop, Level, Text, First, Last));
 
          when Factor_Grammar =>
             if Grammar (Pattern, Nodes, Id, Start, Stop, Atom_Grammar) then
@@ -1844,8 +1842,8 @@ is
                      pragma
                        Assert
                          (Separators (Pattern, Start, Stop).Has_Quant
-                          and then
-                            Separators (Pattern, Start, Stop).Quant = Cut);
+                            and then Separators (Pattern, Start, Stop).Quant
+                                     = Cut);
                      Lemma_Repeat_Denotation
                        (Pattern,
                         Nodes,
@@ -1861,14 +1859,14 @@ is
                      pragma
                        Assert
                          (Matches (Nodes, Id, Text, First, Last)
-                          = Denotes
-                              (Pattern,
-                               Start,
-                               Stop,
-                               Level,
-                               Text,
-                               First,
-                               Last));
+                            = Denotes
+                                (Pattern,
+                                 Start,
+                                 Stop,
+                                 Level,
+                                 Text,
+                                 First,
+                                 Last));
                      return;
                   end if;
                   pragma
@@ -1881,15 +1879,14 @@ is
                                  Start,
                                  K,
                                  Atom_Grammar)
-                              and then
-                                Quantifier_Syntax
-                                  (Pattern, K, Stop, Nodes (Id))));
+                              and then Quantifier_Syntax
+                                         (Pattern, K, Stop, Nodes (Id))));
                end loop;
             end if;
             pragma
               Assert
                 (Matches (Nodes, Id, Text, First, Last)
-                 = Denotes (Pattern, Start, Stop, Level, Text, First, Last));
+                   = Denotes (Pattern, Start, Stop, Level, Text, First, Last));
 
          when Term_Grammar   =>
             if Start = Stop and then Nodes (Id).Kind = Empty_Node then
@@ -1917,14 +1914,13 @@ is
                         Start,
                         Cut,
                         Term_Grammar)
-                    and then
-                      Grammar
-                        (Pattern,
-                         Nodes,
-                         Nodes (Id).Right,
-                         Cut,
-                         Stop,
-                         Factor_Grammar)
+                    and then Grammar
+                               (Pattern,
+                                Nodes,
+                                Nodes (Id).Right,
+                                Cut,
+                                Stop,
+                                Factor_Grammar)
                   then
                      Lemma_Grammar_Walk
                        (Pattern,
@@ -1947,8 +1943,8 @@ is
                      pragma
                        Assert
                          (Separators (Pattern, Start, Stop).Has_Atom
-                          and then
-                            Separators (Pattern, Start, Stop).Atom = Cut);
+                            and then Separators (Pattern, Start, Stop).Atom
+                                     = Cut);
                      for Middle in First .. Last loop
                         Lemma_Denotation
                           (Pattern,
@@ -1982,29 +1978,32 @@ is
                                     Text,
                                     First,
                                     K)
-                               and then
-                                 Matches
-                                   (Nodes, Nodes (Id).Right, Text, K, Last)
-                                 = Denotes
-                                     (Pattern,
-                                      Cut,
-                                      Stop,
-                                      Factor_Grammar,
-                                      Text,
-                                      K,
-                                      Last));
+                               and then Matches
+                                          (Nodes,
+                                           Nodes (Id).Right,
+                                           Text,
+                                           K,
+                                           Last)
+                                        = Denotes
+                                            (Pattern,
+                                             Cut,
+                                             Stop,
+                                             Factor_Grammar,
+                                             Text,
+                                             K,
+                                             Last));
                      end loop;
                      pragma
                        Assert
                          (Matches (Nodes, Id, Text, First, Last)
-                          = Denotes
-                              (Pattern,
-                               Start,
-                               Stop,
-                               Level,
-                               Text,
-                               First,
-                               Last));
+                            = Denotes
+                                (Pattern,
+                                 Start,
+                                 Stop,
+                                 Level,
+                                 Text,
+                                 First,
+                                 Last));
                      return;
                   end if;
                   pragma
@@ -2017,20 +2016,19 @@ is
                                  Start,
                                  K,
                                  Term_Grammar)
-                              and then
-                                Grammar
-                                  (Pattern,
-                                   Nodes,
-                                   Nodes (Id).Right,
-                                   K,
-                                   Stop,
-                                   Factor_Grammar)));
+                              and then Grammar
+                                         (Pattern,
+                                          Nodes,
+                                          Nodes (Id).Right,
+                                          K,
+                                          Stop,
+                                          Factor_Grammar)));
                end loop;
             end if;
             pragma
               Assert
                 (Matches (Nodes, Id, Text, First, Last)
-                 = Denotes (Pattern, Start, Stop, Level, Text, First, Last));
+                   = Denotes (Pattern, Start, Stop, Level, Text, First, Last));
 
          when Expr_Grammar   =>
             if Grammar (Pattern, Nodes, Id, Start, Stop, Term_Grammar) then
@@ -2049,22 +2047,20 @@ is
             else
                for Cut in Start .. Stop - 1 loop
                   if Byte_At (Pattern, Cut) = '|'
-                    and then
-                      Grammar
-                        (Pattern,
-                         Nodes,
-                         Nodes (Id).Left,
-                         Start,
-                         Cut,
-                         Expr_Grammar)
-                    and then
-                      Grammar
-                        (Pattern,
-                         Nodes,
-                         Nodes (Id).Right,
-                         Cut + 1,
-                         Stop,
-                         Term_Grammar)
+                    and then Grammar
+                               (Pattern,
+                                Nodes,
+                                Nodes (Id).Left,
+                                Start,
+                                Cut,
+                                Expr_Grammar)
+                    and then Grammar
+                               (Pattern,
+                                Nodes,
+                                Nodes (Id).Right,
+                                Cut + 1,
+                                Stop,
+                                Term_Grammar)
                   then
                      Lemma_Grammar_Walk
                        (Pattern,
@@ -2087,8 +2083,8 @@ is
                      pragma
                        Assert
                          (Separators (Pattern, Start, Stop).Has_Bar
-                          and then
-                            Separators (Pattern, Start, Stop).Bar = Cut);
+                            and then Separators (Pattern, Start, Stop).Bar
+                                     = Cut);
                      Lemma_Denotation
                        (Pattern,
                         Nodes,
@@ -2112,42 +2108,40 @@ is
                      pragma
                        Assert
                          (Matches (Nodes, Id, Text, First, Last)
-                          = Denotes
-                              (Pattern,
-                               Start,
-                               Stop,
-                               Level,
-                               Text,
-                               First,
-                               Last));
+                            = Denotes
+                                (Pattern,
+                                 Start,
+                                 Stop,
+                                 Level,
+                                 Text,
+                                 First,
+                                 Last));
                      return;
                   end if;
                   pragma
                     Loop_Invariant
                       (for all K in Start .. Cut =>
                          not (Byte_At (Pattern, K) = '|'
-                              and then
-                                Grammar
-                                  (Pattern,
-                                   Nodes,
-                                   Nodes (Id).Left,
-                                   Start,
-                                   K,
-                                   Expr_Grammar)
-                              and then
-                                Grammar
-                                  (Pattern,
-                                   Nodes,
-                                   Nodes (Id).Right,
-                                   K + 1,
-                                   Stop,
-                                   Term_Grammar)));
+                              and then Grammar
+                                         (Pattern,
+                                          Nodes,
+                                          Nodes (Id).Left,
+                                          Start,
+                                          K,
+                                          Expr_Grammar)
+                              and then Grammar
+                                         (Pattern,
+                                          Nodes,
+                                          Nodes (Id).Right,
+                                          K + 1,
+                                          Stop,
+                                          Term_Grammar)));
                end loop;
             end if;
             pragma
               Assert
                 (Matches (Nodes, Id, Text, First, Last)
-                 = Denotes (Pattern, Start, Stop, Level, Text, First, Last));
+                   = Denotes (Pattern, Start, Stop, Level, Text, First, Last));
       end case;
    end Lemma_Denotation;
 
@@ -2218,12 +2212,10 @@ is
      (Pattern : String; Pos, Depth : Natural; Level : Grammar_Level)
       return Boolean
    is (Syntax_Continuation (Pattern, Pos, Depth, Plain_Atom)
-       and then
-         (if Level /= Atom_Grammar
-          then Syntax_Continuation (Pattern, Pos, Depth, Repeated_Atom))
-       and then
-         (if Level in Term_Grammar | Expr_Grammar
-          then Syntax_Continuation (Pattern, Pos, Depth, No_Atom)))
+       and then (if Level /= Atom_Grammar
+                 then Syntax_Continuation (Pattern, Pos, Depth, Repeated_Atom))
+       and then (if Level in Term_Grammar | Expr_Grammar
+                 then Syntax_Continuation (Pattern, Pos, Depth, No_Atom)))
    with Ghost => Static, Pre => Depth <= Pos and Pos <= Pattern'Length;
 
    procedure Lemma_Grammar_Continuation
@@ -2279,8 +2271,8 @@ is
                         First,
                         Middle,
                         Atom_Grammar)
-                    and then
-                      Quantifier_Syntax (Pattern, Middle, Last, Nodes (Id))
+                    and then Quantifier_Syntax
+                               (Pattern, Middle, Last, Nodes (Id))
                   then
                      pragma
                        Assert
@@ -2305,9 +2297,8 @@ is
                                  First,
                                  K,
                                  Atom_Grammar)
-                              and then
-                                Quantifier_Syntax
-                                  (Pattern, K, Last, Nodes (Id))));
+                              and then Quantifier_Syntax
+                                         (Pattern, K, Last, Nodes (Id))));
                end loop;
             end if;
 
@@ -2327,14 +2318,13 @@ is
                         First,
                         Middle,
                         Term_Grammar)
-                    and then
-                      Grammar
-                        (Pattern,
-                         Nodes,
-                         Nodes (Id).Right,
-                         Middle,
-                         Last,
-                         Factor_Grammar)
+                    and then Grammar
+                               (Pattern,
+                                Nodes,
+                                Nodes (Id).Right,
+                                Middle,
+                                Last,
+                                Factor_Grammar)
                   then
                      Lemma_Grammar_Continuation
                        (Pattern,
@@ -2364,14 +2354,13 @@ is
                                  First,
                                  K,
                                  Term_Grammar)
-                              and then
-                                Grammar
-                                  (Pattern,
-                                   Nodes,
-                                   Nodes (Id).Right,
-                                   K,
-                                   Last,
-                                   Factor_Grammar)));
+                              and then Grammar
+                                         (Pattern,
+                                          Nodes,
+                                          Nodes (Id).Right,
+                                          K,
+                                          Last,
+                                          Factor_Grammar)));
                end loop;
             end if;
 
@@ -2382,22 +2371,20 @@ is
             else
                for Bar in First .. Last - 1 loop
                   if Byte_At (Pattern, Bar) = '|'
-                    and then
-                      Grammar
-                        (Pattern,
-                         Nodes,
-                         Nodes (Id).Left,
-                         First,
-                         Bar,
-                         Expr_Grammar)
-                    and then
-                      Grammar
-                        (Pattern,
-                         Nodes,
-                         Nodes (Id).Right,
-                         Bar + 1,
-                         Last,
-                         Term_Grammar)
+                    and then Grammar
+                               (Pattern,
+                                Nodes,
+                                Nodes (Id).Left,
+                                First,
+                                Bar,
+                                Expr_Grammar)
+                    and then Grammar
+                               (Pattern,
+                                Nodes,
+                                Nodes (Id).Right,
+                                Bar + 1,
+                                Last,
+                                Term_Grammar)
                   then
                      Lemma_Grammar_Continuation
                        (Pattern,
@@ -2423,22 +2410,20 @@ is
                     Loop_Invariant
                       (for all K in First .. Bar =>
                          not (Byte_At (Pattern, K) = '|'
-                              and then
-                                Grammar
-                                  (Pattern,
-                                   Nodes,
-                                   Nodes (Id).Left,
-                                   First,
-                                   K,
-                                   Expr_Grammar)
-                              and then
-                                Grammar
-                                  (Pattern,
-                                   Nodes,
-                                   Nodes (Id).Right,
-                                   K + 1,
-                                   Last,
-                                   Term_Grammar)));
+                              and then Grammar
+                                         (Pattern,
+                                          Nodes,
+                                          Nodes (Id).Left,
+                                          First,
+                                          K,
+                                          Expr_Grammar)
+                              and then Grammar
+                                         (Pattern,
+                                          Nodes,
+                                          Nodes (Id).Right,
+                                          K + 1,
+                                          Last,
+                                          Term_Grammar)));
                end loop;
             end if;
       end case;
@@ -2491,7 +2476,7 @@ is
             pragma
               Assert
                 (Grammar (Pattern, Before, Id, First, Last, Level)
-                 = Grammar (Pattern, After, Id, First, Last, Level));
+                   = Grammar (Pattern, After, Id, First, Last, Level));
 
          when Factor_Grammar =>
             Lemma_Grammar_Frame
@@ -2529,7 +2514,7 @@ is
             pragma
               Assert
                 (Grammar (Pattern, Before, Id, First, Last, Level)
-                 = Grammar (Pattern, After, Id, First, Last, Level));
+                   = Grammar (Pattern, After, Id, First, Last, Level));
 
          when Term_Grammar   =>
             Lemma_Grammar_Frame
@@ -2553,21 +2538,20 @@ is
                               First,
                               K,
                               Term_Grammar)
-                         and
-                           Grammar
-                             (Pattern,
-                              Before,
-                              Before (Id).Right,
-                              K,
-                              Last,
-                              Factor_Grammar)
-                           = Grammar
+                         and Grammar
                                (Pattern,
-                                After,
-                                After (Id).Right,
+                                Before,
+                                Before (Id).Right,
                                 K,
                                 Last,
-                                Factor_Grammar));
+                                Factor_Grammar)
+                             = Grammar
+                                 (Pattern,
+                                  After,
+                                  After (Id).Right,
+                                  K,
+                                  Last,
+                                  Factor_Grammar));
                   Lemma_Grammar_Frame
                     (Pattern,
                      Before,
@@ -2591,7 +2575,7 @@ is
             pragma
               Assert
                 (Grammar (Pattern, Before, Id, First, Last, Level)
-                 = Grammar (Pattern, After, Id, First, Last, Level));
+                   = Grammar (Pattern, After, Id, First, Last, Level));
 
          when Expr_Grammar   =>
             Lemma_Grammar_Frame
@@ -2655,7 +2639,7 @@ is
             pragma
               Assert
                 (Grammar (Pattern, Before, Id, First, Last, Level)
-                 = Grammar (Pattern, After, Id, First, Last, Level));
+                   = Grammar (Pattern, After, Id, First, Last, Level));
       end case;
    end Lemma_Grammar_Frame;
 
@@ -2674,42 +2658,40 @@ is
        and then S.Term_First <= S.Term_Last
        and then S.Term_Last <= Last
        and then Last <= Pattern'Length
-       and then
-         (if F.Expr = 0
-          then S.Term_First = S.First
-          else
-            S.First < S.Term_First
-            and then Byte_At (Pattern, S.Term_First - 1) = '|'
-            and then
-              Grammar
-                (Pattern,
-                 Nodes,
-                 F.Expr,
-                 S.First,
-                 S.Term_First - 1,
-                 Expr_Grammar))
-       and then
-         (if F.Term = 0
-          then S.Term_Last = S.Term_First
-          else
-            Grammar
-              (Pattern,
-               Nodes,
-               F.Term,
-               S.Term_First,
-               S.Term_Last,
-               Term_Grammar))
-       and then
-         (if F.Atom = 0
-          then S.Term_Last = Last
-          else
-            Grammar
-              (Pattern,
-               Nodes,
-               F.Atom,
-               S.Term_Last,
-               Last,
-               (if F.Quantified then Factor_Grammar else Atom_Grammar))))
+       and then (if F.Expr = 0
+                 then S.Term_First = S.First
+                 else
+                   S.First < S.Term_First
+                   and then Byte_At (Pattern, S.Term_First - 1) = '|'
+                   and then Grammar
+                              (Pattern,
+                               Nodes,
+                               F.Expr,
+                               S.First,
+                               S.Term_First - 1,
+                               Expr_Grammar))
+       and then (if F.Term = 0
+                 then S.Term_Last = S.Term_First
+                 else
+                   Grammar
+                     (Pattern,
+                      Nodes,
+                      F.Term,
+                      S.Term_First,
+                      S.Term_Last,
+                      Term_Grammar))
+       and then (if F.Atom = 0
+                 then S.Term_Last = Last
+                 else
+                   Grammar
+                     (Pattern,
+                      Nodes,
+                      F.Atom,
+                      S.Term_Last,
+                      Last,
+                      (if F.Quantified
+                       then Factor_Grammar
+                       else Atom_Grammar))))
    with Ghost => Static, Pre => Tree_Valid (Nodes);
 
    procedure Lemma_Frame_Syntax_Frame
@@ -2798,23 +2780,23 @@ is
         (T : Tree; Include_Top : Boolean := True) return Boolean
       is ((for all F in 1 .. Top =>
              Spans (F).First <= Cursor
-             and then
-               (if F < Top
-                then Frames (F).Atom = 0 and not Frames (F).Quantified)
-             and then
-               (if F = 1
-                then Spans (F).First = 0
-                else
-                  Spans (F).First > Spans (F - 1).First
-                  and then Byte_At (Pattern, Spans (F).First - 1) = '('))
-          and then
-            (for all F in 1 .. (if Include_Top then Top else Top - 1) =>
-               Frame_Syntax
-                 (Pattern,
-                  T,
-                  Frames (F),
-                  Spans (F),
-                  (if F = Top then Cursor else Spans (F + 1).First - 1))))
+             and then (if F < Top
+                       then Frames (F).Atom = 0 and not Frames (F).Quantified)
+             and then (if F = 1
+                       then Spans (F).First = 0
+                       else
+                         Spans (F).First > Spans (F - 1).First
+                         and then Byte_At (Pattern, Spans (F).First - 1)
+                                  = '('))
+          and then (for all F in 1 .. (if Include_Top then Top else Top - 1) =>
+                      Frame_Syntax
+                        (Pattern,
+                         T,
+                         Frames (F),
+                         Spans (F),
+                         (if F = Top
+                          then Cursor
+                          else Spans (F + 1).First - 1))))
       with Ghost => Static, Pre => Tree_Valid (T) and Cursor <= Pattern'Length;
 
       procedure Preserve_Frames (Before : Tree; Limit : Node_Id)
@@ -2824,11 +2806,10 @@ is
           Tree_Valid (Before)
           and then Tree_Valid (Nodes)
           and then Cursor <= Pattern'Length
-          and then
-            (for all F in 1 .. Top =>
-               Frames (F).Expr <= Limit
-               and Frames (F).Term <= Limit
-               and Frames (F).Atom <= Limit)
+          and then (for all F in 1 .. Top =>
+                      Frames (F).Expr <= Limit
+                      and Frames (F).Term <= Limit
+                      and Frames (F).Atom <= Limit)
           and then (for all K in 1 .. Limit => Before (K) = Nodes (K))
           and then Frames_Syntax (Before),
         Post  => Frames_Syntax (Nodes)
@@ -2862,9 +2843,10 @@ is
                 Tree_Valid (Nodes)
                 and then Frames_Valid
                 and then Cursor <= Pattern'Length
-                and then
-                  (if Status = Success
-                   then Node_Valid (N, Used) and then Frames_Syntax (Nodes)));
+                and then (if Status = Success
+                          then
+                            Node_Valid (N, Used)
+                            and then Frames_Syntax (Nodes)));
          pragma
            Postcondition
              (Static =>
@@ -2873,15 +2855,16 @@ is
                 and then (if Status = Success then Frames_Syntax (Nodes))
                 and then Used >= Used'Old
                 and then Id <= Used
-                and then
-                  (if Status = Success
-                   then Id = Used and Used = Used'Old + 1 and Nodes (Id) = N)
-                and then
-                  (for all K in 1 .. Used'Old => Nodes (K) = Nodes'Old (K))
+                and then (if Status = Success
+                          then
+                            Id = Used
+                            and Used = Used'Old + 1
+                            and Nodes (Id) = N)
+                and then (for all K in 1 .. Used'Old =>
+                            Nodes (K) = Nodes'Old (K))
                 and then (if Status'Old /= Success then Status = Status'Old)
-                and then
-                  (if Status'Old = Success
-                   then Status in Success | Node_Limit));
+                and then (if Status'Old = Success
+                          then Status in Success | Node_Limit));
          Before : constant Tree := Nodes
          with Ghost => Static;
          Limit  : constant Node_Id := Used
@@ -2916,20 +2899,19 @@ is
                 and then Frames_Valid
                 and then Used >= Used'Old
                 and then (if Status'Old /= Success then Status = Status'Old)
-                and then
-                  (if Status'Old = Success then Status in Success | Node_Limit)
+                and then (if Status'Old = Success
+                          then Status in Success | Node_Limit)
                 and then Frames (Top).Atom = 0
                 and then not Frames (Top).Quantified
                 and then Frames (Top).Expr = Frames'Old (Top).Expr
                 and then Spans (Top).First = Spans'Old (Top).First
                 and then Spans (Top).Term_First = Spans'Old (Top).Term_First
                 and then Spans (Top).Term_Last = Cursor
-                and then
-                  (for all F in Live_Node =>
-                     (if F /= Top
-                      then
-                        Frames (F) = Frames'Old (F)
-                        and Spans (F) = Spans'Old (F)))
+                and then (for all F in Live_Node =>
+                            (if F /= Top
+                             then
+                               Frames (F) = Frames'Old (F)
+                               and Spans (F) = Spans'Old (F)))
                 and then (if Status = Success then Frames_Syntax (Nodes)));
          Id : Node_Id;
       begin
@@ -2978,31 +2960,28 @@ is
                 and then Frames_Valid
                 and then Used >= Used'Old
                 and then (if Status'Old /= Success then Status = Status'Old)
-                and then
-                  (if Status'Old = Success then Status in Success | Node_Limit)
+                and then (if Status'Old = Success
+                          then Status in Success | Node_Limit)
                 and then Spans (Top).First = Spans'Old (Top).First
-                and then
-                  (for all F in Live_Node =>
-                     (if F /= Top
-                      then
-                        Frames (F) = Frames'Old (F)
-                        and Spans (F) = Spans'Old (F)))
+                and then (for all F in Live_Node =>
+                            (if F /= Top
+                             then
+                               Frames (F) = Frames'Old (F)
+                               and Spans (F) = Spans'Old (F)))
                 and then Frames (Top).Atom = 0
                 and then Frames (Top).Term = 0
                 and then not Frames (Top).Quantified
-                and then
-                  (if Status = Success
-                   then
-                     Frames (Top).Expr /= 0
-                     and then Frames_Syntax (Nodes, False)
-                     and then
-                       Grammar
-                         (Pattern,
-                          Nodes,
-                          Frames (Top).Expr,
-                          Spans (Top).First,
-                          Cursor,
-                          Expr_Grammar)));
+                and then (if Status = Success
+                          then
+                            Frames (Top).Expr /= 0
+                            and then Frames_Syntax (Nodes, False)
+                            and then Grammar
+                                       (Pattern,
+                                        Nodes,
+                                        Frames (Top).Expr,
+                                        Spans (Top).First,
+                                        Cursor,
+                                        Expr_Grammar)));
          Id : Node_Id;
       begin
          Flush_Atom;
@@ -3061,14 +3040,13 @@ is
                 (if Pattern_Valid (Pattern)
                  then
                    Status /= Syntax_Error
-                   and then
-                     (if Status = Success
-                      then
-                        Syntax_Continuation
-                          (Pattern,
-                           Cursor,
-                           Top - 1,
-                           Pending (Frames (Top))))));
+                   and then (if Status = Success
+                             then
+                               Syntax_Continuation
+                                 (Pattern,
+                                  Cursor,
+                                  Top - 1,
+                                  Pending (Frames (Top))))));
          pragma
            Loop_Invariant
              (Static => (if Status = Success then Frames_Syntax (Nodes)));
@@ -3206,14 +3184,13 @@ is
                    (if Pattern_Valid (Pattern)
                     then
                       Status /= Syntax_Error
-                      and then
-                        (if Status = Success
-                         then
-                           Syntax_Continuation
-                             (Pattern,
-                              Cursor,
-                              Top - 1,
-                              Pending (Frames (Top))))));
+                      and then (if Status = Success
+                                then
+                                  Syntax_Continuation
+                                    (Pattern,
+                                     Cursor,
+                                     Top - 1,
+                                     Pending (Frames (Top))))));
             pragma
               Assert
                 (Static => (if Status = Success then Frames_Syntax (Nodes)));

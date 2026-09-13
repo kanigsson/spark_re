@@ -11,8 +11,9 @@ package Spark_Re_Trees.Matching with SPARK_Mode is
    --  so the facade can hand one back on a compile failure without seeing
    --  the instruction representation.
    type Program is private
-   with Default_Initial_Condition =>
-     Well_Formed (Program) and not Is_Valid (Program);
+   with
+     Default_Initial_Condition =>
+       Well_Formed (Program) and not Is_Valid (Program);
 
    function Is_Valid (Self : Program) return Boolean
    with Global => null;
@@ -99,9 +100,10 @@ package Spark_Re_Trees.Matching with SPARK_Mode is
      Post  =>
        NFA_Accepts (Self, Text, Whole)
        = Tree_Accepts (Nodes, Root, Text, Whole)
-       and then
-         (if Whole then Full_Match (Self, Text) else Search (Self, Text))
-         = Tree_Accepts (Nodes, Root, Text, Whole);
+       and then (if Whole
+                 then Full_Match (Self, Text)
+                 else Search (Self, Text))
+                = Tree_Accepts (Nodes, Root, Text, Whole);
 
    --  Apply the theorem to the actual compiler for an arbitrary supplied text.
    procedure Compile_Tree_For_Text
@@ -118,13 +120,12 @@ package Spark_Re_Trees.Matching with SPARK_Mode is
        Well_Formed (Result)
        and then (Is_Valid (Result) = (Status = Success))
        and then Status in Success | State_Limit | Expansion_Limit
-       and then
-         (if Status = Success
-          then
-            (if Whole
-             then Full_Match (Result, Text)
-             else Search (Result, Text))
-            = Tree_Accepts (Nodes, Root, Text, Whole));
+       and then (if Status = Success
+                 then
+                   (if Whole
+                    then Full_Match (Result, Text)
+                    else Search (Result, Text))
+                   = Tree_Accepts (Nodes, Root, Text, Whole));
 
 private
    subtype State_Id is Natural range 0 .. Max_States;

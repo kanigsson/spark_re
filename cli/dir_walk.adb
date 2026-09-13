@@ -156,10 +156,9 @@ package body Dir_Walk is
                      begin
                         if not Ignored (Rel_Path, Is_Dir => True)
                           and then Depth + 1 < Opts.Max_Depth
-                          and then
-                            (if Opts.Follow_Links
-                             then Child /= ""
-                             else Child = Plain)
+                          and then (if Opts.Follow_Links
+                                    then Child /= ""
+                                    else Child = Plain)
                         then
                            Descend (Rel_Path & "/", Child, Depth + 1);
                         end if;

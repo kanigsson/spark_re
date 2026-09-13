@@ -2,7 +2,9 @@
 --  This unit has no body and no dependencies; it exists so that those three
 --  layers can be proved independently of one another.
 
-package Spark_Re_Common with SPARK_Mode is
+package Spark_Re_Common
+  with SPARK_Mode
+is
    Max_Pattern_Length : constant := 65_535;
    Max_Repetition     : constant := 255;
 

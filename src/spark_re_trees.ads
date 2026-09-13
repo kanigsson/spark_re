@@ -29,12 +29,11 @@ package Spark_Re_Trees with SPARK_Mode is
    function Node_Valid (N : Node; Before : Node_Id) return Boolean
    is (N.Left <= Before
        and then N.Right <= Before
-       and then
-         (case N.Kind is
-            when Concat_Node | Alt_Node => N.Left > 0 and N.Right > 0,
-            when Repeat_Node            =>
-              N.Left > 0 and (N.Unlimited or N.Low <= N.High),
-            when others                 => True))
+       and then (case N.Kind is
+                   when Concat_Node | Alt_Node => N.Left > 0 and N.Right > 0,
+                   when Repeat_Node            =>
+                     N.Left > 0 and (N.Unlimited or N.Low <= N.High),
+                   when others                 => True))
    with Ghost => Static;
 
    function Tree_Valid (Nodes : Tree) return Boolean
@@ -120,31 +119,29 @@ package Spark_Re_Trees with SPARK_Mode is
        then
          (for some Middle in First .. Last =>
             Matches (Nodes, Nodes (Id).Left, Text, First, Middle)
-            and then
-              Repeated_Matches
-                (Nodes,
-                 Id,
-                 Text,
-                 Middle,
-                 Last,
-                 Low - 1,
-                 (if Unlimited then High else High - 1),
-                 Unlimited))
+            and then Repeated_Matches
+                       (Nodes,
+                        Id,
+                        Text,
+                        Middle,
+                        Last,
+                        Low - 1,
+                        (if Unlimited then High else High - 1),
+                        Unlimited))
        elsif First = Last
        then True
        elsif Unlimited
        then
          (for some Middle in First + 1 .. Last =>
             Matches (Nodes, Nodes (Id).Left, Text, First, Middle)
-            and then
-              Repeated_Matches (Nodes, Id, Text, Middle, Last, 0, High, True))
+            and then Repeated_Matches
+                       (Nodes, Id, Text, Middle, Last, 0, High, True))
        elsif High > 0
        then
          (for some Middle in First .. Last =>
             Matches (Nodes, Nodes (Id).Left, Text, First, Middle)
-            and then
-              Repeated_Matches
-                (Nodes, Id, Text, Middle, Last, 0, High - 1, False))
+            and then Repeated_Matches
+                       (Nodes, Id, Text, Middle, Last, 0, High - 1, False))
        else False);
 
    procedure Lemma_Empty_Repetition

@@ -1,4 +1,6 @@
-package body Spark_Re_Trees with SPARK_Mode is
+package body Spark_Re_Trees
+  with SPARK_Mode
+is
 
    procedure Lemma_Empty_Repetition
      (Nodes     : Tree;
@@ -6,8 +8,7 @@ package body Spark_Re_Trees with SPARK_Mode is
       Text      : String;
       Position  : Natural;
       Low, High : Natural;
-      Unlimited : Boolean)
-   is
+      Unlimited : Boolean) is
    begin
       if Low > 0 then
          Lemma_Empty_Repetition

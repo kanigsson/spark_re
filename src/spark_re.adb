@@ -41,19 +41,18 @@ is
         Postcondition
           (Static =>
              Tree_Valid (Nodes)
-             and then
-               (if Status = Success
-                then
-                  Root /= 0
-                  and then
-                    Parsing.Grammar
-                      (Pattern,
-                       Nodes,
-                       Root,
-                       0,
-                       Pattern'Length,
-                       Parsing.Expr_Grammar)
-                  and then Matching.Tree_Compiled (Nodes, Root, Result.Impl)));
+             and then (if Status = Success
+                       then
+                         Root /= 0
+                         and then Parsing.Grammar
+                                    (Pattern,
+                                     Nodes,
+                                     Root,
+                                     0,
+                                     Pattern'Length,
+                                     Parsing.Expr_Grammar)
+                         and then Matching.Tree_Compiled
+                                    (Nodes, Root, Result.Impl)));
    begin
       Result := (Impl => <>);
       Parsing.Parse (Pattern, Nodes, Root, Status);
@@ -73,18 +72,16 @@ is
         Assert
           (Static =>
              Tree_Valid (Nodes)
-             and then
-               (if Status = Success
-                then
-                  Root /= 0
-                  and then
-                    Parsing.Grammar
-                      (Pattern,
-                       Nodes,
-                       Root,
-                       0,
-                       Pattern'Length,
-                       Parsing.Expr_Grammar)));
+             and then (if Status = Success
+                       then
+                         Root /= 0
+                         and then Parsing.Grammar
+                                    (Pattern,
+                                     Nodes,
+                                     Root,
+                                     0,
+                                     Pattern'Length,
+                                     Parsing.Expr_Grammar)));
    end Compile;
 
    --  The composed theorem: for a supplied text, a successfully compiled
@@ -102,24 +99,24 @@ is
        Tree_Valid (Nodes)
        and then Well_Formed (Result)
        and then (Is_Valid (Result) = (Status = Success))
-       and then
-         (if Status = Success
-          then
-            Root /= 0
-            and then
-              Parsing.Grammar
-                (Pattern, Nodes, Root, 0, Pattern'Length, Parsing.Expr_Grammar)
-            and then
-              NFA_Accepts (Result, Text, Whole)
-              = Matching.Tree_Accepts (Nodes, Root, Text, Whole)
-            and then
-              Matching.Tree_Accepts (Nodes, Root, Text, Whole)
-              = Pattern_Accepts (Pattern, Text, Whole)
-            and then
-              (if Whole
-               then Full_Match (Result, Text)
-               else Search (Result, Text))
-              = Matching.Tree_Accepts (Nodes, Root, Text, Whole))
+       and then (if Status = Success
+                 then
+                   Root /= 0
+                   and then Parsing.Grammar
+                              (Pattern,
+                               Nodes,
+                               Root,
+                               0,
+                               Pattern'Length,
+                               Parsing.Expr_Grammar)
+                   and then NFA_Accepts (Result, Text, Whole)
+                            = Matching.Tree_Accepts (Nodes, Root, Text, Whole)
+                   and then Matching.Tree_Accepts (Nodes, Root, Text, Whole)
+                            = Pattern_Accepts (Pattern, Text, Whole)
+                   and then (if Whole
+                             then Full_Match (Result, Text)
+                             else Search (Result, Text))
+                            = Matching.Tree_Accepts (Nodes, Root, Text, Whole))
    is
    begin
       Compile_With_Tree (Pattern, Result, Status, Nodes, Root);
