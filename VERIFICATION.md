@@ -357,3 +357,64 @@ models, snapshots and lemmas do not execute in either build mode.
 The evidence covers the default instantiation. Custom capacities need their
 own proof run; available stack space and exact resource sufficiency remain
 outside this theorem.
+
+## Layer separation — 2026-09-13
+
+The committed baseline (`f3fb4cf`) proved all 2,858 checks from a single
+6,584-line package body. That body is now split into four units — a dependency-
+free `Spark_Re_Common`, the generic `Spark_Re_Trees`, and its generic children
+`Spark_Re_Trees.Parsing` and `Spark_Re_Trees.Matching` — with `Spark_Re`
+reduced to a 124-line facade. The full validation sequence passed, with **all
+2,879 checks proved**, zero justified and zero unproved:
+
+| Category | Checks |
+| --- | ---: |
+| Data dependencies | 17 |
+| Initialization | 104 |
+| Runtime checks | 1,387 |
+| Assertions | 233 |
+| Functional contracts | 890 |
+| Termination | 248 |
+
+The parser and the matcher now share only the syntax tree and neither withs
+the other, so each layer's obligations are discharged on its own. The split is
+transcription only: diffing the new bodies against the baseline's line ranges
+shows the parser text identical and the compiler/simulator text identical apart
+from two blank lines. No proof body, loop invariant or assertion was edited;
+the only relocations are contracts that were in-body pragmas and are now unit
+interfaces. The added
+checks come from contracts that were previously in-body pragmas and are now
+unit interfaces, from the `Program` wrapper in the facade, and from the two
+new opaque certificates `Grammar` and `Tree_Compiled`.
+
+Two interface changes accompany the split. `Compile_Status` and `Byte_Set` now
+live in `Spark_Re_Common`; `Spark_Re` re-exports the status type as a subtype
+with renamed literals, so client code is unaffected. `Program` inside
+`Spark_Re_Trees.Matching` carries a `Default_Initial_Condition`, which is what
+lets the facade return a rejecting program on a compile failure without seeing
+the instruction representation.
+
+**Proof settings changed.** The prover list is now `cvc5,z3,altergo`; level,
+timeout and job count are unchanged. Five quantified goals — four witness
+searches in the compiler frame and parts lemmas, one decimal-bound
+precondition in the scanner — reach the 20-second limit for cvc5 and Z3 once
+those lemmas are analyzed as their own unit, and did not recover at
+`--timeout=120` or `--level=3`. Alt-Ergo discharges them at the standard
+settings; it carries 1% of assertions and under 1% of functional contracts,
+and nothing else. Alt-Ergo ships with SPARK and adds no axioms. Reformulating
+the four witness searches around named cut predicates was tried first and
+relocated the difficulty rather than removing it, so the proof text was left
+identical to the baseline instead.
+
+`python3 scripts/validate.py` passed release tests, executable-contract tests,
+flow analysis and proof. Both test modes passed the Ada cases and **1,198
+differential/CLI checks over 290 patterns**. The receipt and command logs are
+in `validation/20260913T015050Z/`; proof took 80 seconds. Source hashes there
+record the code at that pass; the two documentation sections were written
+afterward. Flow analysis reports
+206 checks across 6 units. Compiler warnings remain for unused ghost lemmas, an
+unused formal parameter, and the intentionally swapped code arrays in symmetric
+frame proofs; GNATprove reports no warnings, assumptions or proof suppressions.
+
+Parser completeness, structural syntax rejection and a pattern-only denotation
+remain open, and now live entirely inside `Spark_Re_Trees.Parsing`.

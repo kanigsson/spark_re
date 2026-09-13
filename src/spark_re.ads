@@ -1,19 +1,37 @@
 --  Byte-oriented regular expressions. No allocation, I/O, or global state.
 --  Instantiate to choose the storage budget; each compiled Program owns its NFA.
+--
+--  This is a facade. The three layers it composes are proved independently:
+--  Spark_Re_Trees (syntax trees and their span semantics), Spark_Re_Parsing
+--  (pattern text to a grammar derivation), and Spark_Re_Matching (tree to NFA,
+--  and the NFA simulator). Neither of the latter two refers to the other.
+
+with Spark_Re_Common;
+use type Spark_Re_Common.Compile_Status;
+with Spark_Re_Trees;
+with Spark_Re_Trees.Matching;
 
 generic
    Max_Nodes : Positive := 512;
    Max_States : Positive := 4_096;
 package Spark_Re with SPARK_Mode is
-   Max_Pattern_Length : constant := 65_535;
-   Max_Repetition     : constant := 255;
-   type Compile_Status is
-     (Success,
-      Syntax_Error,
-      Pattern_Too_Long,
-      Node_Limit,
-      State_Limit,
-      Expansion_Limit);
+   Max_Pattern_Length : constant := Spark_Re_Common.Max_Pattern_Length;
+   Max_Repetition     : constant := Spark_Re_Common.Max_Repetition;
+
+   subtype Compile_Status is Spark_Re_Common.Compile_Status;
+   function Success return Compile_Status
+     renames Spark_Re_Common.Success;
+   function Syntax_Error return Compile_Status
+     renames Spark_Re_Common.Syntax_Error;
+   function Pattern_Too_Long return Compile_Status
+     renames Spark_Re_Common.Pattern_Too_Long;
+   function Node_Limit return Compile_Status
+     renames Spark_Re_Common.Node_Limit;
+   function State_Limit return Compile_Status
+     renames Spark_Re_Common.State_Limit;
+   function Expansion_Limit return Compile_Status
+     renames Spark_Re_Common.Expansion_Limit;
+
    type Program is private;
    function Is_Valid (Self : Program) return Boolean
    with Global => null;
@@ -52,32 +70,13 @@ package Spark_Re with SPARK_Mode is
      Postcondition
        (Static => Full_Match'Result = NFA_Accepts (Self, Text, True));
 private
-   subtype State_Id is Natural range 0 .. Max_States;
-   subtype Live_State is State_Id range 1 .. Max_States;
-   type Byte_Set is array (Character) of Boolean;
-   type Opcode is (Dead, Consume, Split, At_Start, At_End, Accept_State);
-   type Instruction is record
-      Op             : Opcode := Dead;
-      Bytes          : Byte_Set := [others => False];
-      Next_1, Next_2 : State_Id := 0;
-   end record;
-   type Code_Array is array (Live_State) of Instruction;
-   function Internal_Valid (Self : Program) return Boolean
-   with Ghost;
+   package Trees is new Spark_Re_Trees (Max_Nodes);
+   package Matching is new Trees.Matching (Max_States);
+
    type Program is record
-      Code         : Code_Array;
-      Count, Start : State_Id := 0;
-      Valid        : Boolean := False;
-   end record
-   with Type_Invariant => Internal_Valid (Program);
-   function Links_Valid (Self : Program) return Boolean
-   is (for all Id in 1 .. Self.Count =>
-         Self.Code (Id).Next_1 <= Self.Count
-         and Self.Code (Id).Next_2 <= Self.Count)
-   with Ghost;
-   function Internal_Valid (Self : Program) return Boolean
-   is (Links_Valid (Self)
-       and then (if Self.Valid then Self.Start in 1 .. Self.Count));
+      Impl : Matching.Program;
+   end record;
+
    function Well_Formed (Self : Program) return Boolean
-   is (Internal_Valid (Self));
+   is (Matching.Well_Formed (Self.Impl));
 end Spark_Re;

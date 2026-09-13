@@ -5,7 +5,6 @@ with Spark_Re;
 procedure Test_Regex is
    use type Regex.Compile_Status;
    package Tiny is new Spark_Re (Max_Nodes => 4, Max_States => 3);
-   use type Tiny.Compile_Status;
    P              : Regex.Program;
    Status         : Regex.Compile_Status;
    T              : Tiny.Program;

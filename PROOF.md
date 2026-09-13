@@ -9,6 +9,38 @@ retains that derived tree as its interpretation of the pattern.
 Remaining obligations are parser completeness and structural syntax rejection,
 and a pattern-only denotation independent of the chosen grammar derivation.
 
+## Unit structure
+
+The proof is split across four units so that each layer's obligations can be
+discharged, and re-discharged, on its own:
+
+| Unit | Contents | Proves |
+| --- | --- | --- |
+| `Spark_Re_Common` | limits, `Compile_Status`, `Byte_Set` | nothing; no body |
+| `Spark_Re_Trees` | tree types, `Tree_Valid`, `Matches`, `Nullable` | span semantics and its empty-span lemmas |
+| `Spark_Re_Trees.Parsing` | scanners, lexical models, `Grammar`, `Parse` | lexical and grammar refinement |
+| `Spark_Re_Trees.Matching` | instructions, `Compile_Tree`, simulator, path model | tree-to-NFA equivalence and the simulator model |
+| `Spark_Re` | facade | composition only |
+
+The two large layers share only the tree. `Spark_Re_Trees.Parsing` never names
+a program, an instruction or a state; `Spark_Re_Trees.Matching` never names a
+pattern span, a scanner or a grammar level. Neither withs the other. The
+parser-completeness obligation recorded below therefore lives entirely inside
+one unit and can be attacked without re-establishing the compiler theorem.
+
+Two predicates are declared in a spec and defined in the corresponding body,
+so that a client carries them without being able to unfold them:
+
+- `Grammar` is the parser's derivation relation. `Parse` produces it and the
+  facade passes it on; only the parser body sees what it means.
+- `Tree_Compiled` is the matcher's construction certificate, packaging the
+  accepting state and root `Compiled_Shape` that `Compile_Tree` establishes and
+  `Lemma_Compiler_Correct` consumes. The facade joins a parse result to a
+  compile result without seeing the instruction layout.
+
+`Compile_Pattern_For_Text`, the composed theorem, is consequently a three-line
+body over two opaque certificates.
+
 ## Proved simulator specification
 
 `Search (P, T) = NFA_Accepts (P, T, False)` and
@@ -339,6 +371,11 @@ checks them, including termination; neither release nor assertion-enabled
 binaries execute them. Ordinary executable contracts remain enabled in the
 checks build. There are no assumptions, imported proof axioms, proof
 suppressions, or library bodies excluded from SPARK.
+
+Proof uses cvc5, Z3 and Alt-Ergo. Alt-Ergo discharges only a handful of
+quantified witness-search goals in the compiler frame lemmas, which cvc5 and
+Z3 reach the time limit on once those lemmas are analyzed as their own unit;
+it is part of the SPARK distribution and introduces no axioms of its own.
 
 The evidence covers the default `Regex` instantiation. Other capacities need
 their own GNATprove run. Stack capacity and a formal machine-cost model are
