@@ -158,6 +158,24 @@ begin
    pragma Assert (Tiny.Search (T, "b"));
    pragma Assert (not Tiny.Full_Match (T, "b"));
    pragma Assert (Tiny.Full_Match (T, "a"));
+   --  Reuse slots across many generations, including an empty active set,
+   --  converging byte transitions, nullable epsilon cycles, and late restart.
+   Check ("^ab$", "acb", False, False);
+   Check ("ab$", String'(1 .. 10_000 => 'x') & "ab", True, False);
+   Check ("(a|a)*b", String'(1 .. 10_000 => 'a'), False, False);
+   Check ("(a?|b?)*c$", String'(1 .. 10_000 => 'a') & "c", True, True);
+   Check ("^a+$", String'(1 .. 10_000 => 'b'), False, False);
+   Tiny.Compile ("a*", T, TS);
+   pragma Assert (TS = Tiny.Success);
+   pragma Assert (Tiny.Full_Match (T, String'(1 .. 10_000 => 'a')));
+   pragma Assert (not Tiny.Full_Match (T, "ab"));
+   pragma Assert (Tiny.Full_Match (T, "a"));
+   declare
+      High_Text : constant String (Integer'Last - 9_999 .. Integer'Last) :=
+        [others => 'a'];
+   begin
+      Check ("^a+$", High_Text, True, True);
+   end;
    Tiny.Compile ("abcd", T, TS);
    pragma Assert (TS = Tiny.Node_Limit);
    Tiny.Compile ("a{4}", T, TS);

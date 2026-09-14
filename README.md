@@ -43,8 +43,9 @@ end if;
 `Spark_Re (Max_Nodes => ..., Max_States => ...)` to choose other storage budgets.
 `Program` owns the fixed instruction array; compilation uses bounded local
 syntax-tree/frame arrays and recursion decreasing in syntax-node index.
-Matching uses bounded local state arrays. No heap allocation occurs in the
-library. Account for this automatic storage on small-stack targets.
+Matching uses two local sparse sets sized to the compiled state count, each
+with stamp, dense and index arrays.
+No heap allocation occurs in the library. Account for this automatic storage on small-stack targets.
 Patterns and text may have arbitrary String lower bounds, including a final
 index equal to `Integer'Last`. Search accepts any substring, including an empty
 one; `Full_Match` requires the whole string. Anchors always refer to the whole
@@ -84,10 +85,15 @@ state use depends on expanded pattern size. Nested empty repetitions are also
 bounded by the separate compiler work budget.
 
 The simulator performs at most one visit per state in each epsilon closure,
-using a visited set and an append-only worklist. It uses O(state capacity)
-workspace and O((text length + 1) * state capacity) time, including clearing
-the fixed-size state arrays. Each closure processes at most the compiled state
-count. Search injects the start state at each position, with no backtracking.
+using generation-stamped sparse sets whose dense lists also serve as worklists.
+Sets are initialized once per match; advancing their generation empties them
+without clearing arrays. Byte transitions and acceptance checks visit only the
+active dense prefix. Matching uses O(compiled states) workspace and
+O((text length + 1) * compiled states) worst-case time.
+Each closure processes at most the compiled state count. Generations follow
+text offsets and cannot wrap within a call. Search injects the start state at
+each position, with no backtracking. [Measurements](BENCHMARKS.md) cover
+sparse searches, wide active sets, and short records, including their tradeoffs.
 
 ## CLI
 

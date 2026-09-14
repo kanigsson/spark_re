@@ -53,7 +53,7 @@ hides the intermediate tree entirely.
 `Full_Match (P, T) = NFA_Accepts (P, T, True)` are public ghost postconditions.
 Invalid programs reject input in both the implementation and the model.
 
-The model in `src/spark_re.adb` uses these definitions:
+The model in `src/spark_re_trees-matching.adb` uses these definitions:
 
 - `Epsilon_Edge` permits split edges and anchors whose condition holds at the
   current text boundary. Sentinel zero is never an epsilon destination.
@@ -73,21 +73,37 @@ The model in `src/spark_re.adb` uses these definitions:
   absolute input boundaries. `NFA_Accepts` tests acceptance at the final
   boundary for whole matching, or at any boundary for search.
 
-These definitions do not call `Advance`, `Closure`, or `Run`.
+These definitions do not call `Advance`, `Closure`, `Sparse_Closure`, or `Run`.
 
 ## Why the worklist is complete
 
-The executable closure uses an append-only queue. `Tail` counts discovered
-states and `Done` counts processed entries. A ghost inverse `Rank` connects
-reached states to their queue slots. `Queue_Valid` proves both directions of
-that correspondence and equates `Tail` with the cardinality of the reached
-set. A missing live state therefore implies room to append it.
+The executable `Sparse_Closure` uses the reached set's dense list as an
+append-only queue. `Length` counts discovered states and `Done` counts processed
+entries. `Sparse_Valid` connects each live current-generation stamp to its dense
+slot through an inverse index, proves the reverse correspondence, and equates
+`Length` with the cardinality of the ghost Boolean `View`. A missing live state
+therefore implies room to append it. `Include` preserves this correspondence
+and the existing dense prefix; duplicate insertion leaves the set unchanged.
+The zero sentinel may be stamped by a byte transition but has no dense slot;
+closure discards it, as in the original Boolean model.
+
+`Clear` increments the generation and resets only the length. All stamps are
+at most the previous generation, so the new view is empty even though dense
+entries and indices remain in storage. `Run` ties both sets' generations to
+the text offset. An increment occurs only before the final boundary, proving
+absence of overflow even for the maximum String length. The two local sets
+are constrained by the compiled state count, so initialization and workspace
+cost O(compiled states); no per-position array clearing remains.
+
+The original Boolean `Closure` is now a static ghost procedure used to prove
+model properties. It is absent from executable builds. The sparse closure
+proves the same reachability and closed-set postconditions against `View`.
 
 `Processed_Closed` says every permitted edge from a processed state reaches
 an already discovered state. Each iteration processes the next queue entry.
 The state-count iteration budget suffices: either the queue empties early,
-or `Done` reaches the state count while `Tail` cannot exceed it. In both cases
-`Done = Tail`, so every discovered state has been processed and the final set
+or `Done` reaches the state count while `Length` cannot exceed it. In both cases
+`Done = Length`, so every discovered state has been processed and the final set
 is epsilon-closed.
 
 For soundness, each newly discovered state receives a ghost path depth and
@@ -473,5 +489,7 @@ definition. These annotations prune context; they assert nothing.
 
 The evidence covers the default `Regex` instantiation. Other capacities need
 their own GNATprove run. Stack capacity and a formal machine-cost model are
-outside the proof. Each closure processes at most the compiled state count;
-clearing the fixed-size arrays also costs time proportional to state capacity.
+outside the proof. Each closure processes at most the compiled state count.
+The sparse set refinement removes per-position clearing and scans of inactive states;
+initialization costs time proportional to the compiled state count once per call.
+The machine-cost bound is an implementation argument, not a proved theorem.
