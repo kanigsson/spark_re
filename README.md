@@ -19,8 +19,8 @@ bin/spark-grep -n 'procedure|function' src/*.ad?
 bin/spark-rg 'procedure|function'
 ```
 
-As in `fuzzy_matcher`, `spark_re.gpr` builds the static library alone;
-`tools.gpr` builds the CLI and tests. `alire.toml` publishes the library alone.
+`spark_re.gpr` builds the static library alone; `tools.gpr` builds the CLI
+and tests. `alire.toml` publishes the library alone.
 Release builds retain runtime checks; `-XSPARK_RE_BUILD=checks` also executes
 assertions and uses separate object/library/executable directories. Tool paths
 belong in optional, ignored `local.mk`; `GPRBUILD`, `GNATPROVE`, `GNATFORMAT`,
@@ -56,9 +56,9 @@ Supported syntax:
 
 | Syntax | Meaning |
 | --- | --- |
-| `abc`, `a\|b` | literal bytes (escape punctuation to make it literal) |
+| `abc`, `a\+b` | literal bytes (escape punctuation to make it literal) |
 | `.`, `[abc]`, `[a-z]`, `[^a-z]` | any byte; sets, inclusive byte ranges, negation |
-| `(ab)`, `a|b` | grouping, alternation |
+| `(ab)`, `a\|b` | grouping, alternation |
 | `a*`, `a+`, `a?` | zero or more, one or more, optional |
 | `a{n}`, `a{n,m}`, `a{n,}` | exact, bounded, unbounded repetition |
 | `^`, `$` | start and end of the entire input |
@@ -144,14 +144,13 @@ instantiation, like all CLI code, is outside the proof run.
 
 The unproved `common/spark_cli` library provides streaming byte-record framing
 with early stop and dynamically growing record storage. It is separately
-consumable; the regex kernel does not depend on it. Existing fuzzy matcher
-sources and their build remain untouched. The CLI is deliberately a named
-subset, not a drop-in GNU grep or ripgrep replacement.
+consumable; the regex kernel does not depend on it. The CLI is deliberately a
+named subset, not a drop-in GNU grep or ripgrep replacement.
 
 ## Verification
 
-The Silver milestone proves absence of runtime errors, initialization,
-global dependencies, and termination for the complete default `Regex` instance.
+Proof covers absence of runtime errors, initialization, global
+dependencies, and termination for the complete default `Regex` instance.
 The functional proof establishes exact byte transitions, epsilon-closure
 soundness and completeness, and equivalence of `Search` and `Full_Match` to
 the declarative `NFA_Accepts` model. Compile status agrees with validity;
@@ -185,5 +184,3 @@ locale C, and checks CLI output, statuses, framing and malformed inputs. It
 also exercises adversarial nonmatching input. Tests require Python 3 and GNU
 grep. Differential tests establish agreement on that corpus, not complete
 POSIX compatibility or a proof of parsing/compilation semantics.
-
-See `VERIFICATION.md` for milestone evidence and the precise proof scope.

@@ -142,7 +142,7 @@ for every constructor.
 
 ## Tree contracts and span semantics
 
-`Parse` and `Compile_Tree` now have separate contracts. `Parse` proves
+`Parse` and `Compile_Tree` have separate contracts. `Parse` proves
 `Tree_Valid`: child references point backward, concatenation and alternation
 have two nonzero children, repetition has a nonzero child, and finite bounds
 satisfy `Low <= High`. Successful parsing returns a nonzero root. Parser frame
@@ -268,7 +268,7 @@ path/simulator bridge then supplies both directions of the theorem.
 
 ## Lexical grammar refinement
 
-The executable parser now uses separately contracted scanners. Their static
+The executable parser uses separately contracted scanners. Their static
 models read pattern bytes directly and call neither the scanners nor `Parse`:
 
 - `Decimal_Digits`, `Decimal_Value` and `Numeral_End` define a maximal decimal
@@ -342,7 +342,7 @@ the executable cursor over the next token.
 proves the empty term or joins the completed term to the expression prefix.
 The main loop proves opening/closing groups, alternation, leaf attachment,
 and attachment of a single quantifier. The successful `Parse` postcondition
-now establishes `Grammar` for the root over the complete pattern, in addition
+establishes `Grammar` for the root over the complete pattern, in addition
 to `Tree_Valid` and a nonzero root.
 
 `Compile_With_Tree` is the shared executable parse/compile operation used by
@@ -455,7 +455,7 @@ binaries execute them. Ordinary executable contracts remain enabled in the
 checks build. There are no assumptions, imported proof axioms, proof
 suppressions, or library bodies excluded from SPARK.
 
-Proof uses cvc5 and Z3.
+Proof runs at `--level=4`, which uses cvc5, Z3 and Alt-Ergo.
 
 Several entities prune their own proof context with `Hide_Info` on expression
 function bodies. `Numeral_End` is hidden by default and disclosed only by its
@@ -475,4 +475,3 @@ The evidence covers the default `Regex` instantiation. Other capacities need
 their own GNATprove run. Stack capacity and a formal machine-cost model are
 outside the proof. Each closure processes at most the compiled state count;
 clearing the fixed-size arrays also costs time proportional to state capacity.
-See `VERIFICATION.md` for validation evidence.
