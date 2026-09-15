@@ -15,21 +15,20 @@ as it stands.
   and length; transitions, closure and acceptance visit dense entries. Local workspaces
   are sized to the compiled state count, with `O(states)` initialization and storage
   and `O((n+1) * states)` worst-case work.
-  Generations follow text offsets and cannot wrap during a call. The local representation
+  Generations are bounded by text offsets and cannot wrap during a call. The local representation
   proof preserves the existing NFA and language theorems. See `PROOF.md`.
-- **Start-byte set and an empty-active-set skip loop.** Compile-time: the set of bytes
-  that any consuming instruction reachable from the entry closure can accept. Run time:
-  while the active set is empty, positions whose byte lies outside that set cannot begin a
-  match, so scan forward byte by byte instead of running a closure per position. One
-  inductive lemma over the existing model suffices — a match beginning at a position
-  implies either a nullable pattern, handled once and separately, or membership in the
-  start set. Anchored patterns benefit from the same mechanism, since a start-anchored
-  program has an empty active set at every later position.
+- [x] **Start-byte set and an empty-active-set skip loop.** Compilation caches
+  the entry closure for interior positions, its accepted byte set and nullability.
+  After a byte transition leaves no live continuation, search scans excluded bytes
+  without NFA transitions or closures. A local cache certificate and the model's
+  skip-step lemma preserve exact acceptance. The first and final boundaries keep
+  their normal closure checks, including nullable patterns and absolute anchors.
+  Start-anchored branches have no interior candidates. See `PROOF.md` and
+  `BENCHMARKS.md`.
 
-These two belong together: the skip loop gains nothing while every position still costs
-the full capacity. Together they are what would close most of the distance to a
-conventional grep on ordinary searches, by replacing a state-set update per byte with a
-byte comparison per byte in the common case where nothing is alive.
+These two refinements remove capacity-sized per-position clearing and replace
+state-set updates with byte comparisons where no match can start. Their measured
+benefits and costs are recorded in `BENCHMARKS.md`.
 
 ## Tier 2 — specification-preserving, but a project
 

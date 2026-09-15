@@ -90,10 +90,18 @@ Sets are initialized once per match; advancing their generation empties them
 without clearing arrays. Byte transitions and acceptance checks visit only the
 active dense prefix. Matching uses O(compiled states) workspace and
 O((text length + 1) * compiled states) worst-case time.
-Each closure processes at most the compiled state count. Generations follow
-text offsets and cannot wrap within a call. Search injects the start state at
-each position, with no backtracking. [Measurements](BENCHMARKS.md) cover
-sparse searches, wide active sets, and short records, including their tradeoffs.
+Each closure processes at most the compiled state count. Generations are bounded
+by text offsets and cannot wrap within a call. Search restarts at each possible
+match position, with no backtracking.
+
+Compilation caches the bytes accepted by consuming states in the interior entry
+closure, with start and end anchors disabled. When a byte step leaves no live
+continuation, search scans bytes outside this set without running NFA transitions
+or closures. The first and final boundaries retain their normal closure checks,
+including nullable and anchored matches. A nullable interior closure disables
+skipping; such a pattern is already accepted by the initial search closure.
+[Measurements](BENCHMARKS.md) cover sparse searches, wide active sets, and short
+records, including their tradeoffs.
 
 ## CLI
 

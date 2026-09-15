@@ -3998,6 +3998,13 @@ is
        and then Compiled_Shape
                   (Nodes, Root, Self.Code, 1, Self.Count, 1, Self.Start));
 
+   procedure Build_Start_Info (Self : Program; Info : out Start_Info)
+   with
+     Global => null,
+     Always_Terminates,
+     Pre    => Links_Valid (Self) and then Self.Start in 1 .. Self.Count,
+     Post   => Restart_Info_Valid (Self, Info);
+
    procedure Compile_Tree
      (Nodes  : Tree;
       Root   : Live_Node;
@@ -4487,13 +4494,20 @@ is
          Result.Start := Entry_State;
       end;
       Result.Valid := Status = Success;
+      if Result.Valid then
+         declare
+            Info : Start_Info;
+         begin
+            Build_Start_Info (Result, Info);
+            Result.Restart := Info;
+         end;
+      end if;
    end Compile_Tree;
    function Is_Valid (Self : Program) return Boolean
    is (Self.Valid);
    function State_Count (Self : Program) return Natural
    is (Self.Count);
 
-   type State_Set is array (State_Id) of Boolean;
    type Links is array (State_Id) of State_Id;
 
    function Consumes_To
@@ -4705,8 +4719,9 @@ is
       end if;
    end Lemma_Count_Equal;
 
-   --  Generations are text offsets. They never wrap: Run advances only
-   --  while Offset < Text'Length, whose upper bound is Integer'Last.
+   --  Generations count NFA steps and are bounded by the text offset.
+   --  Skipped bytes leave them unchanged; Run increments only before the
+   --  final boundary, whose upper bound is Integer'Last.
    type Generation is range -1 .. Integer'Last;
    type Stamps is array (State_Id range <>) of Generation;
    type Sparse_Links is array (State_Id range <>) of State_Id;
@@ -5301,6 +5316,56 @@ is
       Lemma_Closed_Reach
         (Self, View (Seeds), Reached, At_First, At_Last, Self.Count);
    end Sparse_Closure;
+
+   procedure Build_Start_Info (Self : Program; Info : out Start_Info) is
+      Count   : constant State_Id := Self.Count;
+      Seeds   : Sparse_Set (Count);
+      Reached : Sparse_Set (Count);
+   begin
+      Lemma_Empty_Count (View (Seeds), Self.Count);
+      Lemma_Empty_Count (View (Reached), Self.Count);
+      Include (Seeds, Self.Start, Self.Count);
+      Sparse_Closure (Self, Seeds, False, False, Reached);
+      Info.States :=
+        [for Id in State_Id =>
+           Id <= Self.Count and then Reached.Stamp (Id) = Reached.Epoch];
+      pragma Assert (Static => Info.States = View (Reached));
+      Info.Bytes := [others => False];
+      Info.Nullable := False;
+      for Id in 1 .. Self.Count loop
+         if Info.States (Id) then
+            if Self.Code (Id).Op = Consume then
+               for Byte in Character loop
+                  Info.Bytes (Byte) :=
+                    Info.Bytes (Byte) or Self.Code (Id).Bytes (Byte);
+                  pragma
+                    Loop_Invariant
+                      (for all B in Character =>
+                         Info.Bytes (B)
+                         = (Info.Bytes'Loop_Entry (B)
+                            or else (B <= Byte
+                                     and then Self.Code (Id).Bytes (B))));
+               end loop;
+            elsif Self.Code (Id).Op = Accept_State then
+               Info.Nullable := True;
+            end if;
+         end if;
+         pragma
+           Loop_Invariant
+             (for all Byte in Character =>
+                Info.Bytes (Byte)
+                = (for some K in 1 .. Id =>
+                     Info.States (K)
+                     and then Self.Code (K).Op = Consume
+                     and then Self.Code (K).Bytes (Byte)));
+         pragma
+           Loop_Invariant
+             (Info.Nullable
+                = (for some K in 1 .. Id =>
+                     Info.States (K)
+                     and then Self.Code (K).Op = Accept_State));
+      end loop;
+   end Build_Start_Info;
 
    --  Set-based NFA semantics. These definitions neither call Advance nor
    --  Closure nor Run; byte edges, epsilon paths, and text positions are
@@ -6003,11 +6068,81 @@ is
          Lemma_Compiler_Correct (Nodes, Root, Result, Text, Whole);
       end if;
    end Compile_Tree_For_Text;
+   --  Closure ignores sentinel zero and every slot outside the live prefix.
+   procedure Lemma_Reach_Live_Equal
+     (Self              : Program;
+      Left, Right       : State_Set;
+      At_First, At_Last : Boolean;
+      Steps             : Natural)
+   with
+     Ghost              => Static,
+     Subprogram_Variant => (Decreases => Steps),
+     Pre                =>
+       (for all Id in 1 .. Self.Count => Left (Id) = Right (Id)),
+     Post               =>
+       (for all Id in State_Id =>
+          Epsilon_Reach (Self, Left, At_First, At_Last, Id, Steps)
+          = Epsilon_Reach (Self, Right, At_First, At_Last, Id, Steps))
+   is
+   begin
+      if Steps > 0 then
+         Lemma_Reach_Live_Equal
+           (Self, Left, Right, At_First, At_Last, Steps - 1);
+      end if;
+   end Lemma_Reach_Live_Equal;
+
+   --  With no surviving continuation, a byte outside the interior start set
+   --  leaves only the next restart. The final boundary is still closed with
+   --  At_Last = True, so end anchors are never skipped.
+   procedure Lemma_Skip_One
+     (Self : Program; Text : String; Offset : Natural; Seeds : State_Set)
+   with
+     Ghost => Static,
+     Pre   =>
+       Internal_Valid (Self)
+       and then Self.Valid
+       and then Offset > 0
+       and then Offset < Text'Length
+       and then not Self.Restart.Nullable
+       and then not Self.Restart.Bytes (Text (Text'First + Offset))
+       and then (for all Id in 1 .. Self.Count =>
+                   Seeds (Id) = (Id = Self.Start))
+       and then Model_States (Self, Text, False, Offset)
+                = Model_Closure (Self, Seeds, False, False),
+     Post  =>
+       not Accepting (Self, Model_States (Self, Text, False, Offset))
+       and then Model_States (Self, Text, False, Offset + 1)
+                = Model_Closure (Self, Seeds, False, Offset + 1 = Text'Length)
+   is
+      Before : constant State_Set := Model_States (Self, Text, False, Offset);
+      After  : constant State_Set :=
+        Model_Step (Self, Before, Text (Text'First + Offset), True);
+   begin
+      pragma Assert (Epsilon_Closed (Self, Self.Restart.States, False, False));
+      Lemma_Closed_Reach
+        (Self, Seeds, Self.Restart.States, False, False, Self.Count);
+      pragma
+        Assert
+          (for all Id in 1 .. Self.Count =>
+             (if Before (Id) then Self.Restart.States (Id)));
+      pragma
+        Assert
+          (for all Source in 1 .. Self.Count =>
+             not (Before (Source)
+                  and then Self.Code (Source).Op = Consume
+                  and then Self.Code (Source).Bytes
+                             (Text (Text'First + Offset))));
+      pragma Assert (for all Id in 1 .. Self.Count => After (Id) = Seeds (Id));
+      Lemma_Reach_Live_Equal
+        (Self, After, Seeds, False, Offset + 1 = Text'Length, Self.Count);
+   end Lemma_Skip_One;
+
    function Run (Self : Program; Text : String; Whole : Boolean) return Boolean
    with
      Pre  => Internal_Valid (Self),
      Post => (Static => Run'Result = NFA_Accepts (Self, Text, Whole))
    is
+      Offset  : Natural := 0;
       Current : Sparse_Set (Self.Count);
       Seeds   : Sparse_Set (Self.Count);
       Initial : constant State_Set := Model_Start (Self)
@@ -6031,14 +6166,16 @@ is
       pragma
         Assert
           (Static => View (Current) = Model_States (Self, Text, Whole, 0));
-      for Offset in 0 .. Text'Length loop
+      loop
+         pragma Loop_Invariant (Offset <= Text'Length);
+         pragma Loop_Variant (Decreases => Text'Length - Offset);
          pragma
            Loop_Invariant
              (Static =>
                 Sparse_Valid (Current, Self.Count)
                 and then Sparse_Valid (Seeds, Self.Count)
-                and then Current.Epoch = Generation (Offset)
-                and then Seeds.Epoch = Generation (Offset));
+                and then Current.Epoch = Seeds.Epoch
+                and then Current.Epoch <= Generation (Offset));
          pragma
            Loop_Invariant
              (Static =>
@@ -6070,6 +6207,7 @@ is
          end if;
          exit when Offset = Text'Length;
          declare
+            Dormant        : Boolean;
             Expected_Seeds : constant State_Set :=
               Model_Step
                 (Self,
@@ -6079,6 +6217,7 @@ is
             with Ghost => Static;
          begin
             Advance (Self, Current, Text (Text'First + Offset), Seeds);
+            Dormant := Seeds.Length = 0;
             if not Whole then
                Include (Seeds, Self.Start, Self.Count);
             end if;
@@ -6090,23 +6229,61 @@ is
                False,
                Offset = Text'Length - 1,
                Self.Count);
-            Clear (Current, Self.Count);
-            Sparse_Closure
-              (Self, Seeds, False, Offset = Text'Length - 1, Current);
+            Offset := Offset + 1;
             pragma
               Assert
                 (Static =>
-                   View (Current)
+                   Model_States (Self, Text, Whole, Offset)
                    = Model_Closure
-                       (Self,
-                        Expected_Seeds,
-                        False,
-                        Offset = Text'Length - 1));
+                       (Self, View (Seeds), False, Offset = Text'Length));
+            if Dormant and then not Whole and then not Self.Restart.Nullable
+            then
+               pragma
+                 Assert
+                   (Static =>
+                      (for all Id in 1 .. Self.Count =>
+                         View (Seeds) (Id) = (Id = Self.Start)));
+               while Offset < Text'Length
+                 and then not Self.Restart.Bytes (Text (Text'First + Offset))
+               loop
+                  pragma Loop_Invariant (Offset <= Text'Length);
+                  pragma Loop_Invariant (Offset >= Offset'Loop_Entry);
+                  pragma Loop_Variant (Decreases => Text'Length - Offset);
+                  pragma
+                    Loop_Invariant
+                      (Static =>
+                         Offset > 0
+                         and then Current.Epoch < Generation (Offset)
+                         and then Seeds.Epoch <= Generation (Offset));
+                  pragma
+                    Loop_Invariant
+                      (Static =>
+                         Model_States (Self, Text, False, Offset)
+                         = Model_Closure
+                             (Self,
+                              View (Seeds),
+                              False,
+                              Offset = Text'Length));
+                  pragma
+                    Loop_Invariant
+                      (Static =>
+                         (for all Earlier in 0 .. Offset =>
+                            (if Earlier < Offset
+                             then
+                               not Accepting
+                                     (Self,
+                                      Model_States
+                                        (Self, Text, False, Earlier)))));
+                  Lemma_Skip_One (Self, Text, Offset, View (Seeds));
+                  Offset := Offset + 1;
+               end loop;
+            end if;
+            Clear (Current, Self.Count);
+            Sparse_Closure (Self, Seeds, False, Offset = Text'Length, Current);
             pragma
               Assert
                 (Static =>
-                   View (Current)
-                   = Model_States (Self, Text, Whole, Offset + 1));
+                   View (Current) = Model_States (Self, Text, Whole, Offset));
          end;
       end loop;
       return False;

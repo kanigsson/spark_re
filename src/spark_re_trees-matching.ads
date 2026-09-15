@@ -137,12 +137,21 @@ private
       Next_1, Next_2 : State_Id := 0;
    end record;
    type Code_Array is array (Live_State) of Instruction;
+   type State_Set is array (State_Id) of Boolean;
+   type Start_Info is record
+      States   : State_Set := [others => False];
+      Bytes    : Byte_Set := [others => False];
+      Nullable : Boolean := False;
+   end record;
    function Internal_Valid (Self : Program) return Boolean
    with Ghost;
    type Program is record
       Code         : Code_Array;
       Count, Start : State_Id := 0;
       Valid        : Boolean := False;
+      --  Interior entry closure and its byte/empty-match summary. The mask
+      --  certifies the filter locally; matching visits the sparse workspaces.
+      Restart      : Start_Info;
    end record
    with Type_Invariant => Internal_Valid (Program);
    function Links_Valid (Self : Program) return Boolean
@@ -150,9 +159,32 @@ private
          Self.Code (Id).Next_1 <= Self.Count
          and Self.Code (Id).Next_2 <= Self.Count)
    with Ghost;
+   function Restart_Info_Valid
+     (Self : Program; Info : Start_Info) return Boolean
+   is (Info.States (Self.Start)
+       and then (for all Id in 1 .. Self.Count =>
+                   (if Info.States (Id)
+                    then
+                      (case Self.Code (Id).Op is
+                         when Split        =>
+                           (Self.Code (Id).Next_1 = 0
+                            or else Info.States (Self.Code (Id).Next_1))
+                           and then (Self.Code (Id).Next_2 = 0
+                                     or else Info.States
+                                               (Self.Code (Id).Next_2)),
+                         when Consume      =>
+                           (for all Byte in Character =>
+                              (if Self.Code (Id).Bytes (Byte)
+                               then Info.Bytes (Byte))),
+                         when Accept_State => Info.Nullable,
+                         when others       => True))))
+   with Ghost;
    function Internal_Valid (Self : Program) return Boolean
    is (Links_Valid (Self)
-       and then (if Self.Valid then Self.Start in 1 .. Self.Count));
+       and then (if Self.Valid
+                 then
+                   Self.Start in 1 .. Self.Count
+                   and then Restart_Info_Valid (Self, Self.Restart)));
    function Well_Formed (Self : Program) return Boolean
    is (Internal_Valid (Self));
 end Spark_Re_Trees.Matching;

@@ -176,6 +176,36 @@ begin
    begin
       Check ("^a+$", High_Text, True, True);
    end;
+   --  Interior skipping must retain first/final anchors and continuations.
+   Check ("$", String'(1 .. 10_000 => 'x'), True, False);
+   Check ("^$", String'(1 .. 10_000 => 'x'), False, False);
+   Check ("a*$", String'(1 .. 10_000 => 'x'), True, False);
+   Check ("^a*$", String'(1 .. 10_000 => 'x'), False, False);
+   Check ("^za", "z" & String'(1 .. 10_000 => 'x') & "za", False, False);
+   Check ("^a|z", "x" & String'(1 .. 10_000 => 'a') & "z", True, False);
+   Check ("(^|$)z", String'(1 .. 10_000 => 'x') & "z", False, False);
+   Check ("z($|a)", String'(1 .. 10_000 => 'x') & "z", True, False);
+   Check ("a$", String'(1 .. 10_000 => 'x') & "ax", False, False);
+   Check ("ab", String'(1 .. 10_000 => 'x') & "aab", True, False);
+   Check ("(ab|ac)d", String'(1 .. 10_000 => 'x') & "acdx", True, False);
+   Check ("a.*z", "a" & String'(1 .. 10_000 => 'x') & "z", True, True);
+   for Byte in Character loop
+      declare
+         Miss : constant Character := (if Byte = 'x' then 'y' else 'x');
+      begin
+         Check
+           ("[\" & Byte & "]$", String'(1 .. 64 => Miss) & Byte, True, False);
+      end;
+   end loop;
+   declare
+      High_Skip  : String (Integer'Last - 10_000 .. Integer'Last) :=
+        [others => 'x'];
+      High_Empty : constant String (Integer'Last .. Integer'Last - 1) := "";
+   begin
+      High_Skip (Integer'Last) := 'z';
+      Check ("z$", High_Skip, True, False);
+      Check ("^$", High_Empty, True, True);
+   end;
    Tiny.Compile ("abcd", T, TS);
    pragma Assert (TS = Tiny.Node_Limit);
    Tiny.Compile ("a{4}", T, TS);

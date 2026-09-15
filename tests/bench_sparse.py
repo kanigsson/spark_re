@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Sequential before/after CLI timings for the sparse simulator refinement."""
+"""Sequential before/after CLI timings for the Tier 1 simulator refinements."""
 
 import argparse
 import hashlib
@@ -27,6 +27,9 @@ def main():
         ("late match", "needle", b"x" * 200_000 + b"needle\n", 0),
         ("wide active set", "a{0,255}b", b"a" * 20_000 + b"\n", 1),
         ("short records", "needle", b"x\n" * 20_000, 1),
+        ("anchored candidate bytes", "^needle", b"n" * 200_000 + b"\n", 1),
+        ("end-only empty match", "$", b"x" * 200_000 + b"\n", 0),
+        ("live continuation", "a.*z", b"a" + b"x" * 200_000 + b"z\n", 0),
     ]
     rows = []
     for name, pattern, data, expected in cases:

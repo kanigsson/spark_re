@@ -89,8 +89,9 @@ closure discards it, as in the original Boolean model.
 
 `Clear` increments the generation and resets only the length. All stamps are
 at most the previous generation, so the new view is empty even though dense
-entries and indices remain in storage. `Run` ties both sets' generations to
-the text offset. An increment occurs only before the final boundary, proving
+entries and indices remain in storage. `Run` bounds both sets' generations by
+the text offset; skipped bytes do not advance them. An increment occurs only
+before the final boundary, proving
 absence of overflow even for the maximum String length. The two local sets
 are constrained by the compiled state count, so initialization and workspace
 cost O(compiled states); no per-position array clearing remains.
@@ -115,6 +116,40 @@ separately so equal state sets can be substituted in the recursive model.
 `Run` maintains equality between its current state set and `Model_States` at
 the current offset. For search it also records that no earlier boundary was
 accepting. These invariants cover early success and exhaustion of the input.
+
+## Start-byte filtering and skipped positions
+
+`Build_Start_Info` runs the proved sparse closure on the entry state with both
+anchor flags false. It stores the reached-state mask and computes the union of
+its consuming instructions' byte sets, plus whether it contains an accept state.
+The loop invariants specify the exact union and accept-state test. This analysis
+runs only after successful compilation. It receives a read-only program and
+returns a separate `Start_Info` record, preserving the instructions, entry,
+state count and validity flag.
+
+The private `Program` invariant includes `Restart_Info_Valid`: the cached mask
+contains the entry state, is closed under interior epsilon edges, and its byte
+and nullable summaries cover every consuming and accepting state in the mask.
+This local certificate is sufficient for filter safety even without assuming a
+canonical cache. `Lemma_Closed_Reach` connects it to the independent path model;
+no cache contents are trusted. The original NFA and pattern denotations are
+unchanged.
+
+`Run` tests for an empty continuation set after the byte transition and before
+injecting the next search start. Testing the full restarted active set would
+miss this opportunity because it already contains the entry state. When no
+continuation survives and the interior closure is not nullable, it skips bytes
+outside `Restart.Bytes`. `Lemma_Skip_One` proves that the current interior restart
+cannot accept or consume that byte, and the next model state is another restart
+closure. `Lemma_Reach_Live_Equal` accounts for the discarded zero sentinel.
+The loop carries model equality and rejection of all earlier positions, and
+records that the offset only increases.
+
+The first boundary is evaluated before skipping. The skip loop stops at the
+final boundary, where the normal closure enables end anchors; `$`, `^$`, nullable
+cycles and alternatives therefore retain their absolute-boundary semantics.
+Interior start-anchored branches contribute no candidate bytes. Whole matching
+keeps the normal simulator path.
 
 ## Compiler facts established
 
