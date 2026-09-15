@@ -1,10 +1,19 @@
 library project Spark_Cli is
+   --  Assertions belong to the checks build, as in the projects that use this
+   --  crate. Each mode keeps its own objects and library.
+   type Build_Mode is ("release", "checks");
+   Build : Build_Mode := external ("SPARK_CLI_BUILD", "release");
    for Source_Dirs use ("src");
-   for Object_Dir use "obj";
-   for Library_Dir use "lib";
+   for Object_Dir use "obj/" & Build;
+   for Library_Dir use "lib/" & Build;
    for Library_Name use "spark_cli";
    for Library_Kind use "static";
    package Compiler is
-      for Default_Switches ("Ada") use ("-gnat2022", "-gnatwa", "-gnata", "-O2");
+      case Build is
+         when "release" =>
+            for Default_Switches ("Ada") use ("-gnat2022", "-gnatwa", "-O2");
+         when "checks" =>
+            for Default_Switches ("Ada") use ("-gnat2022", "-gnatwa", "-gnata", "-O2");
+      end case;
    end Compiler;
 end Spark_Cli;

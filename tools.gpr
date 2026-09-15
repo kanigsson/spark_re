@@ -13,6 +13,12 @@ project Tools is
       for Executable ("spark_rg.adb") use "spark-rg";
    end Builder;
    package Compiler is
-      for Default_Switches ("Ada") use ("-gnat2022", "-gnatwa", "-gnata", "-O2");
+      --  Assertions are a property of the build mode, not of the CLI sources.
+      case Spark_Re.Build is
+         when "release" =>
+            for Default_Switches ("Ada") use ("-gnat2022", "-gnatwa", "-O2");
+         when "checks" =>
+            for Default_Switches ("Ada") use ("-gnat2022", "-gnatwa", "-gnata", "-O2");
+      end case;
    end Compiler;
 end Tools;

@@ -14,8 +14,11 @@ test: all
 	bin/test_regex
 	python3 tests/test_cli.py
 	python3 tests/test_rg.py
+#  Assertions follow the build mode, so both the library and the vendored
+#  CLI support crate must be switched over together.
+CHECKS_VARS = -XSPARK_RE_BUILD=checks -XSPARK_CLI_BUILD=checks
 test-contracts:
-	$(GPRBUILD) -P tools.gpr -XSPARK_RE_BUILD=checks -j$(JOBS)
+	$(GPRBUILD) -P tools.gpr $(CHECKS_VARS) -j$(JOBS)
 	bin/checks/test_regex
 	SPARK_GREP=bin/checks/spark-grep python3 tests/test_cli.py
 	SPARK_RG=bin/checks/spark-rg python3 tests/test_rg.py
