@@ -1,10 +1,76 @@
 with Ada.Text_IO;
 with Regex;
 with Spark_Re;
+with Spark_Re_Trees;
+with Spark_Re_Trees.Matching;
+with Spark_Re_Trees.Matching.Testing;
 
 procedure Test_Regex is
    use type Regex.Compile_Status;
    package Tiny is new Spark_Re (Max_Nodes => 4, Max_States => 3);
+   package Test_Trees is new Spark_Re_Trees (512);
+   package Test_Matching is new Test_Trees.Matching (4_096);
+   package Rollover is new Test_Matching.Testing;
+
+   procedure Check_Reuse is
+      Code         : Regex.Program;
+      Result       : Regex.Compile_Status;
+      Found        : Boolean;
+      Invalid_Work : Regex.Matcher (0);
+   begin
+      Regex.Initialize (Invalid_Work);
+      Regex.Search_With (Code, "", Invalid_Work, Found);
+      if Found then
+         raise Program_Error with "invalid reused program accepted";
+      end if;
+      Regex.Compile ("a+", Code, Result);
+      declare
+         Work : Regex.Matcher (Regex.State_Count (Code));
+         High : constant String (Integer'Last - 2 .. Integer'Last) := "aaa";
+      begin
+         Regex.Initialize (Work);
+         Regex.Full_Match_With (Code, High, Work, Found);
+         if not Found then
+            raise Program_Error with "high-bound reused matching";
+         end if;
+         Regex.Compile ("b+", Code, Result);
+         Regex.Search_With (Code, High, Work, Found);
+         if Found then
+            raise Program_Error with "stale states after recompilation";
+         end if;
+         Regex.Search_With (Code, "bbb", Work, Found);
+         if not Found then
+            raise Program_Error with "same-size program reuse";
+         end if;
+         Regex.Initialize (Work);
+         Regex.Full_Match_With (Code, "", Work, Found);
+         if Found then
+            raise Program_Error with "explicit workspace reinitialization";
+         end if;
+      end;
+      declare
+         Small        : Tiny.Program;
+         Small_Status : Tiny.Compile_Status;
+      begin
+         Tiny.Compile ("a", Small, Small_Status);
+         if Small_Status /= Tiny.Success then
+            raise Program_Error with "small-instance compilation";
+         end if;
+         declare
+            Work : Tiny.Matcher (Tiny.State_Count (Small));
+         begin
+            Tiny.Initialize (Work);
+            Tiny.Search_With (Small, "ba", Work, Found);
+            if not Found then
+               raise Program_Error with "small-instance reused search";
+            end if;
+            Tiny.Full_Match_With (Small, "ba", Work, Found);
+            if Found then
+               raise Program_Error with "small-instance reused whole match";
+            end if;
+         end;
+      end;
+   end Check_Reuse;
    P              : Regex.Program;
    Status         : Regex.Compile_Status;
    T              : Tiny.Program;
@@ -15,6 +81,22 @@ procedure Test_Regex is
       pragma Assert (Status = Regex.Success);
       pragma Assert (Regex.Search (P, Text) = Found);
       pragma Assert (Regex.Full_Match (P, Text) = Whole);
+      declare
+         Work   : Regex.Matcher (Regex.State_Count (P));
+         Actual : Boolean;
+      begin
+         Regex.Initialize (Work);
+         for Pass in 1 .. 2 loop
+            Regex.Search_With (P, Text, Work, Actual);
+            if Actual /= Found then
+               raise Program_Error with "reused search result";
+            end if;
+            Regex.Full_Match_With (P, Text, Work, Actual);
+            if Actual /= Whole then
+               raise Program_Error with "reused whole-match result";
+            end if;
+         end loop;
+      end;
    end Check;
    procedure Reject (Pattern : String) is
    begin
@@ -27,6 +109,8 @@ procedure Test_Regex is
    Offset_Text    : constant String (Integer'Last - 2 .. Integer'Last) :=
      "aab";
 begin
+   Rollover.Check_Rollover;
+   Check_Reuse;
    pragma Assert (not Regex.Search (P, "anything"));
    Check ("", "", True, True);
    Check ("", "a", True, False);

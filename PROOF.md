@@ -73,7 +73,7 @@ The model in `src/spark_re_trees-matching.adb` uses these definitions:
   absolute input boundaries. `NFA_Accepts` tests acceptance at the final
   boundary for whole matching, or at any boundary for search.
 
-These definitions do not call `Advance`, `Closure`, `Sparse_Closure`, or `Run`.
+These definitions do not call `Advance`, `Closure`, `Sparse_Closure`, `Run`, or `Run_With`.
 
 ## Why the worklist is complete
 
@@ -89,12 +89,38 @@ closure discards it, as in the original Boolean model.
 
 `Clear` increments the generation and resets only the length. All stamps are
 at most the previous generation, so the new view is empty even though dense
-entries and indices remain in storage. `Run` bounds both sets' generations by
-the text offset; skipped bytes do not advance them. An increment occurs only
-before the final boundary, proving
-absence of overflow even for the maximum String length. The two local sets
-are constrained by the compiled state count, so initialization and workspace
-cost O(compiled states); no per-position array clearing remains.
+entries and indices remain in storage. The same argument empties retained
+workspaces between records. `Matcher_Valid` requires both sparse sets to satisfy
+`Sparse_Valid`; initialization establishes it and every reusable matching call
+preserves it, including early success and invalid-program rejection. Workspace
+capacity must equal the program's compiled state count. No program identity or
+previous input survives in the logical initial state, so a workspace may also
+be used with a different program of the same size.
+
+Generations retain the range `-1 .. Integer'Last` (32 bits on the measured
+target). Their bound is now independent of text offsets and record count.
+Before an increment, the implementation tests for saturation. At saturation it
+sets all stamps to `-1`, the epoch to zero and the length to zero. The empty
+view makes stale dense entries and indices irrelevant; the empty-cardinality
+lemma reestablishes the full sparse-set invariant. Otherwise the old strict
+increment precondition is proved by the saturation guard. Byte transitions
+retain their original strict precondition and epoch-increment postcondition;
+their discarded output workspace is reset first when necessary. Every increment
+is therefore proved within range, even across arbitrarily many calls or a
+maximum-length String. No physical-unreachability assumption is used.
+
+A reset touches only the stamp array. Between such resets there are
+`Integer'Last` generation advances, so the O(states) reset cost is amortized
+over approximately 2^31 advances per set. Normal clearing touches only epoch
+and length. The retained workspace has the same array element widths as the
+one-shot workspace; no 64-bit stamp expansion is needed.
+
+`Search_With` and `Full_Match_With` have static postconditions equating their
+Boolean output to `Search` and `Full_Match`, respectively, and preserving
+workspace validity. Both paths use the same simulator, whose result is proved
+equal to the unchanged `NFA_Accepts`. The one-shot signatures, contracts and
+existing compiler/parser composition theorems are unchanged. The generic facade
+carries the equivalence through to the default `Regex` instance.
 
 The original Boolean `Closure` is now a static ghost procedure used to prove
 model properties. It is absent from executable builds. The sparse closure
@@ -113,9 +139,12 @@ number. `Lemma_Reach_Monotone` raises this bound to the state count at exit.
 Completeness follows from `Lemma_Closed_Reach`. Array extensionality is proved
 separately so equal state sets can be substituted in the recursive model.
 
-`Run` maintains equality between its current state set and `Model_States` at
+`Run_With` maintains equality between its current state set and `Model_States` at
 the current offset. For search it also records that no earlier boundary was
 accepting. These invariants cover early success and exhaustion of the input.
+A static extensionality lemma transports the byte-transition image between
+equal state sets before restart insertion. Its proof uses plain state arrays;
+it needs no unfolding of the recursive text model.
 
 ## Start-byte filtering and skipped positions
 
@@ -135,7 +164,7 @@ canonical cache. `Lemma_Closed_Reach` connects it to the independent path model;
 no cache contents are trusted. The original NFA and pattern denotations are
 unchanged.
 
-`Run` tests for an empty continuation set after the byte transition and before
+`Run_With` tests for an empty continuation set after the byte transition and before
 injecting the next search start. Testing the full restarted active set would
 miss this opportunity because it already contains the entry state. When no
 continuation survives and the interior closure is not nullable, it skips bytes
@@ -508,6 +537,16 @@ suppressions, or library bodies excluded from SPARK.
 
 Proof runs at `--level=4`, which uses cvc5, Z3 and Alt-Ergo.
 
+The workspace-reuse validation recorded 3,942 checks before the change (one
+existing seed-set equality timeout) and 4,037 afterward, all proved with zero
+justified or unproved checks. The final run used `make prove` at level 4 with
+forced reanalysis; `make flow` passed all 271 checks. Both `make test` and
+`make test-contracts` passed the library tests, 1,198 CLI comparisons, 193 walker
+checks and 656 added workspace/one-shot/GNU grep comparisons per build mode.
+Test-only access to the private representation exercises generation saturation
+within a record, between records, and after early acceptance. These executable
+tests supplement the proved overflow guards; they do not replace the proof.
+
 Several entities prune their own proof context with `Hide_Info` on expression
 function bodies. `Numeral_End` is hidden by default and disclosed only by its
 step lemma. In addition, the witness searches over compiled code intervals
@@ -526,5 +565,8 @@ The evidence covers the default `Regex` instantiation. Other capacities need
 their own GNATprove run. Stack capacity and a formal machine-cost model are
 outside the proof. Each closure processes at most the compiled state count.
 The sparse set refinement removes per-position clearing and scans of inactive states;
-initialization costs time proportional to the compiled state count once per call.
+initialization costs time proportional to the compiled state count once per
+workspace (once per call for the one-shot functions). Initial epsilon closure
+and subsequent matching still visit active states, which can cover the entire
+compiled prefix even on short records.
 The machine-cost bound is an implementation argument, not a proved theorem.

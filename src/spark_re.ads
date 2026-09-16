@@ -69,6 +69,39 @@ package Spark_Re with SPARK_Mode is
      Postcondition
        (Static => Full_Match'Result = NFA_Accepts (Self, Text, True));
 
+   --  Allocate once at the compiled state count, then initialize before use.
+   --  The workspace can be reused with any program of that same size.
+   subtype Workspace_Capacity is Natural range 0 .. Max_States;
+   type Matcher (Capacity : Workspace_Capacity) is limited private
+   with Default_Initial_Condition => True;
+   function Matcher_Valid (Work : Matcher) return Boolean
+   with Ghost => Static, Global => null;
+   procedure Initialize (Work : out Matcher)
+   with Global => null, Post => (Static => Matcher_Valid (Work));
+
+   procedure Search_With
+     (Self  : Program;
+      Text  : String;
+      Work  : in out Matcher;
+      Found : out Boolean)
+   with Global => null, Pre => Work.Capacity = State_Count (Self);
+   pragma Precondition (Static => Matcher_Valid (Work));
+   pragma
+     Postcondition
+       (Static => Matcher_Valid (Work) and then Found = Search (Self, Text));
+
+   procedure Full_Match_With
+     (Self  : Program;
+      Text  : String;
+      Work  : in out Matcher;
+      Found : out Boolean)
+   with Global => null, Pre => Work.Capacity = State_Count (Self);
+   pragma Precondition (Static => Matcher_Valid (Work));
+   pragma
+     Postcondition
+       (Static =>
+          Matcher_Valid (Work) and then Found = Full_Match (Self, Text));
+
    --  Pattern-only language semantics, independent of parsing, tree
    --  allocation, compilation, and simulation.
    function Pattern_Accepts
@@ -101,6 +134,10 @@ private
 
    type Program is record
       Impl : Matching.Program;
+   end record;
+
+   type Matcher (Capacity : Workspace_Capacity) is limited record
+      Impl : Matching.Matcher (Capacity);
    end record;
 
    function Well_Formed (Self : Program) return Boolean

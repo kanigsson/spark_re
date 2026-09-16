@@ -45,6 +45,39 @@ package Spark_Re_Trees.Matching with SPARK_Mode is
      Postcondition
        (Static => Full_Match'Result = NFA_Accepts (Self, Text, True));
 
+   --  Allocate once at the compiled state count, then initialize before use.
+   --  The workspace can be reused with any program of that same size.
+   subtype Workspace_Capacity is Natural range 0 .. Max_States;
+   type Matcher (Capacity : Workspace_Capacity) is limited private
+   with Default_Initial_Condition => True;
+   function Matcher_Valid (Work : Matcher) return Boolean
+   with Ghost => Static, Global => null;
+   procedure Initialize (Work : out Matcher)
+   with Global => null, Post => (Static => Matcher_Valid (Work));
+
+   procedure Search_With
+     (Self  : Program;
+      Text  : String;
+      Work  : in out Matcher;
+      Found : out Boolean)
+   with Global => null, Pre => Work.Capacity = State_Count (Self);
+   pragma Precondition (Static => Matcher_Valid (Work));
+   pragma
+     Postcondition
+       (Static => Matcher_Valid (Work) and then Found = Search (Self, Text));
+
+   procedure Full_Match_With
+     (Self  : Program;
+      Text  : String;
+      Work  : in out Matcher;
+      Found : out Boolean)
+   with Global => null, Pre => Work.Capacity = State_Count (Self);
+   pragma Precondition (Static => Matcher_Valid (Work));
+   pragma
+     Postcondition
+       (Static =>
+          Matcher_Valid (Work) and then Found = Full_Match (Self, Text));
+
    --  Certificate that Self is the program Compile_Tree builds for
    --  (Nodes, Root). Its definition is private to the body: a client carries
    --  this certificate from the compiler to the correctness theorem without
@@ -130,6 +163,21 @@ package Spark_Re_Trees.Matching with SPARK_Mode is
 private
    subtype State_Id is Natural range 0 .. Max_States;
    subtype Live_State is State_Id range 1 .. Max_States;
+   type Generation is range -1 .. Integer'Last;
+   type Stamps is array (State_Id range <>) of Generation;
+   type Sparse_Links is array (State_Id range <>) of State_Id;
+   type Sparse_Set (Capacity : State_Id) is record
+      Epoch  : Generation := 0;
+      Stamp  : Stamps (0 .. Capacity) := [others => -1];
+      Dense  : Sparse_Links (0 .. Capacity) := [others => 0];
+      Index  : Sparse_Links (0 .. Capacity) := [others => 0];
+      Length : State_Id := 0;
+   end record;
+
+   type Matcher (Capacity : Workspace_Capacity) is limited record
+      Current, Seeds : Sparse_Set (Capacity);
+   end record;
+
    type Opcode is (Dead, Consume, Split, At_Start, At_End, Accept_State);
    type Instruction is record
       Op             : Opcode := Dead;

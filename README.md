@@ -43,13 +43,35 @@ end if;
 `Spark_Re (Max_Nodes => ..., Max_States => ...)` to choose other storage budgets.
 `Program` owns the fixed instruction array; compilation uses bounded local
 syntax-tree/frame arrays and recursion decreasing in syntax-node index.
-Matching uses two local sparse sets sized to the compiled state count, each
-with stamp, dense and index arrays.
+Matching uses two sparse sets sized to the compiled state count, each with
+stamp, dense and index arrays. The one-shot functions use local storage;
+repeated matching can retain that storage in a `Matcher`.
 No heap allocation occurs in the library. Account for this automatic storage on small-stack targets.
 Patterns and text may have arbitrary String lower bounds, including a final
 index equal to `Integer'Last`. Search accepts any substring, including an empty
 one; `Full_Match` requires the whole string. Anchors always refer to the whole
 input. An invalid/default-initialized program never matches.
+
+For repeated matching, declare a workspace after compilation and initialize it
+once. Both CLIs retain one workspace across all records and files:
+
+```ada
+declare
+   Capacity : constant Natural := Regex.State_Count (P);
+   Work : Regex.Matcher (Capacity);
+   Found : Boolean;
+begin
+   Regex.Initialize (Work);
+   Regex.Search_With (P, "src/example.adb", Work, Found);
+   Regex.Full_Match_With (P, "src/example.adb", Work, Found);
+end;
+```
+
+The workspace may be reused with any program having the same state count.
+Initialize it before its first use; subsequent calls preserve its validity.
+The reusable procedures are proved equivalent to the one-shot functions.
+They return their Boolean through an `out` parameter. Each simultaneous match
+needs its own workspace; the compiled program is read-only during matching.
 
 ## Pattern language
 
@@ -86,13 +108,16 @@ bounded by the separate compiler work budget.
 
 The simulator performs at most one visit per state in each epsilon closure,
 using generation-stamped sparse sets whose dense lists also serve as worklists.
-Sets are initialized once per match; advancing their generation empties them
-without clearing arrays. Byte transitions and acceptance checks visit only the
+A `Matcher` initializes its sets once; advancing their generation empties them
+without clearing arrays between bytes or records. Byte transitions and acceptance checks visit only the
 active dense prefix. Matching uses O(compiled states) workspace and
 O((text length + 1) * compiled states) worst-case time.
-Each closure processes at most the compiled state count. Generations are bounded
-by text offsets and cannot wrap within a call. Search restarts at each possible
-match position, with no backtracking.
+Each closure processes at most the compiled state count. A 32-bit generation
+counter resets its stamps at saturation, with a proved guard against overflow.
+Search restarts at each possible match position, with no backtracking.
+Workspace clearing costs O(1) per record, amortized over saturation resets;
+initial closure and matching still visit active states. In particular, a wide
+nullable prefix can require O(compiled states) work on every record.
 
 Compilation caches the bytes accepted by consuming states in the interior entry
 closure, with start and end anchors disabled. When a byte step leaves no live

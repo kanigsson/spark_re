@@ -144,108 +144,125 @@ procedure Spark_Rg is
          return False;
    end Looks_Binary;
 
-   procedure Filter (Name : String; Standard : Boolean; Stop : out Boolean) is
-      File           : Files.File_Type;
-      Line, Selected : Natural := 0;
-      Prefix         : constant Boolean := not Hide_Name;
-      procedure Record_Line (Record_Text : String; Halt : out Boolean) is
-         Matches : constant Boolean :=
-           (if Whole
-            then Regex.Full_Match (Code, Record_Text)
-            else Regex.Search (Code, Record_Text));
-      begin
-         Halt := False;
-         Line := Line + 1;
-         if Matches /= Invert then
-            Any_Selected := True;
-            Selected := Selected + 1;
-            if Quiet then
-               Halt := True;
-            elsif List_Files then
-               Write (Name & ASCII.LF);
-               Halt := True;
-            elsif not Count_Only then
-               if Prefix then
-                  Write (Name & ":");
-               end if;
-               if Numbered then
-                  Write (Image (Line) & ":");
-               end if;
-               Write (Record_Text & Delimiter);
+   procedure Process_Input is
+      Work : Regex.Matcher (Regex.State_Count (Code));
+      procedure Filter (Name : String; Standard : Boolean; Stop : out Boolean)
+      is
+         File           : Files.File_Type;
+         Line, Selected : Natural := 0;
+         Prefix         : constant Boolean := not Hide_Name;
+         procedure Record_Line (Record_Text : String; Halt : out Boolean) is
+            Matches : Boolean;
+         begin
+            if Whole then
+               Regex.Full_Match_With (Code, Record_Text, Work, Matches);
+            else
+               Regex.Search_With (Code, Record_Text, Work, Matches);
             end if;
-         end if;
-      end Record_Line;
-   begin
-      Stop := False;
-      if Standard then
-         Spark_Cli.Read_Records
-           (IO.Text_Streams.Stream (IO.Standard_Input),
-            Delimiter,
-            Record_Line'Access);
-      else
-         if not Scan_Binary and then Looks_Binary (Name) then
-            return;
-         end if;
-         Files.Open (File, Files.In_File, Name);
-         Spark_Cli.Read_Records
-           (Files.Stream (File), Delimiter, Record_Line'Access);
-         Files.Close (File);
-      end if;
-      if Count_Only and then not Quiet and then not List_Files then
-         if Prefix then
-            Write (Name & ":");
-         end if;
-         Write (Image (Selected) & ASCII.LF);
-      end if;
-      Stop := Quiet and then Any_Selected;
-   exception
-      when E : others =>
-         if Files.Is_Open (File) then
+            Halt := False;
+            Line := Line + 1;
+            if Matches /= Invert then
+               Any_Selected := True;
+               Selected := Selected + 1;
+               if Quiet then
+                  Halt := True;
+               elsif List_Files then
+                  Write (Name & ASCII.LF);
+                  Halt := True;
+               elsif not Count_Only then
+                  if Prefix then
+                     Write (Name & ":");
+                  end if;
+                  if Numbered then
+                     Write (Image (Line) & ":");
+                  end if;
+                  Write (Record_Text & Delimiter);
+               end if;
+            end if;
+         end Record_Line;
+      begin
+         Stop := False;
+         if Standard then
+            Spark_Cli.Read_Records
+              (IO.Text_Streams.Stream (IO.Standard_Input),
+               Delimiter,
+               Record_Line'Access);
+         else
+            if not Scan_Binary and then Looks_Binary (Name) then
+               return;
+            end if;
+            Files.Open (File, Files.In_File, Name);
+            Spark_Cli.Read_Records
+              (Files.Stream (File), Delimiter, Record_Line'Access);
             Files.Close (File);
          end if;
-         Error (Name & ": " & Ada.Exceptions.Exception_Message (E));
-   end Filter;
+         if Count_Only and then not Quiet and then not List_Files then
+            if Prefix then
+               Write (Name & ":");
+            end if;
+            Write (Image (Selected) & ASCII.LF);
+         end if;
+         Stop := Quiet and then Any_Selected;
+      exception
+         when E : others =>
+            if Files.Is_Open (File) then
+               Files.Close (File);
+            end if;
+            Error (Name & ": " & Ada.Exceptions.Exception_Message (E));
+      end Filter;
 
-   procedure Visit (Path : String; Stop : out Boolean) is
-   begin
-      Stop := False;
-      if Selected_By_Globs (Path) then
-         Filter (Path, Standard => False, Stop => Stop);
-      end if;
-   end Visit;
+      procedure Visit (Path : String; Stop : out Boolean) is
+      begin
+         Stop := False;
+         if Selected_By_Globs (Path) then
+            Filter (Path, Standard => False, Stop => Stop);
+         end if;
+      end Visit;
 
-   procedure Search_Argument (Name : String) is
-      Stop : Boolean;
+      procedure Search_Argument (Name : String) is
+         Stop : Boolean;
+      begin
+         if Name = "-" then
+            Filter ("(standard input)", Standard => True, Stop => Stop);
+            Finished := Stop;
+         elsif Ada.Directories.Exists (Name)
+           and then Ada.Directories.Kind (Name) = Ada.Directories.Directory
+         then
+            --  Paths below a named directory are reported the way the user
+            --  named it, and below "." with no prefix at all.
+            Dir_Walk.Walk
+              (Root    => Name,
+               Opts    => Walk_Options,
+               Display =>
+                 (if Name = "."
+                  then ""
+                  elsif Name (Name'Last) = '/'
+                  then Name
+                  else Name & "/"),
+               Visit   => Visit'Access,
+               Warn    => Warn'Access);
+            Finished := Quiet and then Any_Selected;
+         else
+            Visit (Name, Stop);
+            Finished := Stop;
+         end if;
+      exception
+         when E : others =>
+            Error (Name & ": " & Ada.Exceptions.Exception_Message (E));
+      end Search_Argument;
+
    begin
-      if Name = "-" then
-         Filter ("(standard input)", Standard => True, Stop => Stop);
-         Finished := Stop;
-      elsif Ada.Directories.Exists (Name)
-        and then Ada.Directories.Kind (Name) = Ada.Directories.Directory
-      then
-         --  Paths below a named directory are reported the way the user
-         --  named it, and below "." with no prefix at all.
-         Dir_Walk.Walk
-           (Root    => Name,
-            Opts    => Walk_Options,
-            Display =>
-              (if Name = "."
-               then ""
-               elsif Name (Name'Last) = '/'
-               then Name
-               else Name & "/"),
-            Visit   => Visit'Access,
-            Warn    => Warn'Access);
-         Finished := Quiet and then Any_Selected;
+      Regex.Initialize (Work);
+      if Path_Count = 0 then
+         Search_Argument (".");
       else
-         Visit (Name, Stop);
-         Finished := Stop;
+         for K in 1 .. Path_Count loop
+            Search_Argument (Argument (Path_Args (K)));
+            exit when Finished;
+         end loop;
       end if;
-   exception
-      when E : others =>
-         Error (Name & ": " & Ada.Exceptions.Exception_Message (E));
-   end Search_Argument;
 
+   end Process_Input;
    function Next_Value (Option : String) return String is
    begin
       if Index < Argument_Count then
@@ -410,15 +427,7 @@ begin
       return;
    end if;
 
-   if Path_Count = 0 then
-      Search_Argument (".");
-   else
-      for K in 1 .. Path_Count loop
-         Search_Argument (Argument (Path_Args (K)));
-         exit when Finished;
-      end loop;
-   end if;
-
+   Process_Input;
    if Had_Error then
       Set_Exit_Status (2);
    elsif Any_Selected then

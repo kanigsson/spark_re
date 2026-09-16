@@ -15,8 +15,8 @@ as it stands.
   and length; transitions, closure and acceptance visit dense entries. Local workspaces
   are sized to the compiled state count, with `O(states)` initialization and storage
   and `O((n+1) * states)` worst-case work.
-  Generations are bounded by text offsets and cannot wrap during a call. The local representation
-  proof preserves the existing NFA and language theorems. See `PROOF.md`.
+  The representation proof preserves the existing NFA and language theorems.
+  Saturation is handled by the workspace reuse refinement below. See `PROOF.md`.
 - [x] **Start-byte set and an empty-active-set skip loop.** Compilation caches
   the entry closure for interior positions, its accepted byte set and nullability.
   After a byte transition leaves no live continuation, search scans excluded bytes
@@ -26,8 +26,17 @@ as it stands.
   Start-anchored branches have no interior candidates. See `PROOF.md` and
   `BENCHMARKS.md`.
 
-These two refinements remove capacity-sized per-position clearing and replace
-state-set updates with byte comparisons where no match can start. Their measured
+- [x] **Reuse the match workspace across records.** A compiled-state-sized
+  `Matcher` retains both sparse sets; initialization is paid once per workspace.
+  Both CLIs reuse it across records and files. Generation changes empty the sets
+  in O(1), with an O(states) stamp reset at 32-bit saturation and a proved
+  overflow guard. Reusable entry points preserve validity and equal the existing
+  one-shot functions, leaving the NFA and composition theorems unchanged.
+  Initial closure still visits active states; a wide nullable prefix retains
+  that per-record cost. See `PROOF.md` and `BENCHMARKS.md`.
+
+These refinements remove capacity-sized per-position and per-record clearing
+and replace state-set updates with byte comparisons where no match can start. Their measured
 benefits and costs are recorded in `BENCHMARKS.md`.
 
 ## Tier 2 — specification-preserving, but a project

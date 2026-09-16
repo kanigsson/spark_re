@@ -4719,20 +4719,6 @@ is
       end if;
    end Lemma_Count_Equal;
 
-   --  Generations count NFA steps and are bounded by the text offset.
-   --  Skipped bytes leave them unchanged; Run increments only before the
-   --  final boundary, whose upper bound is Integer'Last.
-   type Generation is range -1 .. Integer'Last;
-   type Stamps is array (State_Id range <>) of Generation;
-   type Sparse_Links is array (State_Id range <>) of State_Id;
-   type Sparse_Set (Capacity : State_Id) is record
-      Epoch  : Generation := 0;
-      Stamp  : Stamps (0 .. Capacity) := [others => -1];
-      Dense  : Sparse_Links (0 .. Capacity) := [others => 0];
-      Index  : Sparse_Links (0 .. Capacity) := [others => 0];
-      Length : State_Id := 0;
-   end record;
-
    function View (Items : Sparse_Set) return State_Set
    with
      Ghost => Static,
@@ -4765,6 +4751,37 @@ is
                    and then Items.Index (Items.Dense (I)) = I))
    with Ghost => Static;
 
+   function Matcher_Valid (Work : Matcher) return Boolean
+   is (Sparse_Valid (Work.Current, Work.Capacity)
+       and then Sparse_Valid (Work.Seeds, Work.Capacity));
+
+   procedure Initialize (Work : out Matcher) is
+   begin
+      Work.Current := (Capacity => Work.Capacity, others => <>);
+      Work.Seeds := (Capacity => Work.Capacity, others => <>);
+      Lemma_Empty_Count (View (Work.Current), Work.Capacity);
+      Lemma_Empty_Count (View (Work.Seeds), Work.Capacity);
+   end Initialize;
+
+   --  Discard every stamp before reusing an exhausted generation counter.
+   --  Dense entries and inverse indices are irrelevant in the empty view.
+   procedure Reset (Items : in out Sparse_Set; Bound : State_Id)
+   with
+     Pre  => (Static => Sparse_Valid (Items, Bound)),
+     Post =>
+       (Static =>
+          Sparse_Valid (Items, Bound)
+          and then Items.Epoch = 0
+          and then Items.Length = 0
+          and then (for all Id in State_Id => not View (Items) (Id)))
+   is
+   begin
+      Items.Stamp := [others => -1];
+      Items.Epoch := 0;
+      Items.Length := 0;
+      Lemma_Empty_Count (View (Items), Bound);
+   end Reset;
+
    procedure Clear (Items : in out Sparse_Set; Bound : State_Id)
    with
      Pre  =>
@@ -4782,6 +4799,25 @@ is
       Items.Length := 0;
       Lemma_Empty_Count (View (Items), Bound);
    end Clear;
+
+   --  A generation change empties the set across records as well as bytes.
+   --  Only saturation requires touching the stamp array.
+   procedure Clear_For_Reuse (Items : in out Sparse_Set; Bound : State_Id)
+   with
+     Pre  => (Static => Sparse_Valid (Items, Bound)),
+     Post =>
+       (Static =>
+          Sparse_Valid (Items, Bound)
+          and then Items.Length = 0
+          and then (for all Id in State_Id => not View (Items) (Id)))
+   is
+   begin
+      if Items.Epoch = Generation'Last then
+         Reset (Items, Bound);
+      else
+         Clear (Items, Bound);
+      end if;
+   end Clear_For_Reuse;
 
    procedure Include
      (Items : in out Sparse_Set; Id : State_Id; Bound : State_Id)
@@ -6137,22 +6173,54 @@ is
         (Self, After, Seeds, False, Offset + 1 = Text'Length, Self.Count);
    end Lemma_Skip_One;
 
-   function Run (Self : Program; Text : String; Whole : Boolean) return Boolean
+   --  Equal active views have equal byte-transition images, regardless of
+   --  how the underlying sparse arrays or model arrays are represented.
+   procedure Lemma_Transition_Extensional
+     (Self : Program; Left, Right : State_Set; Byte : Character)
    with
-     Pre  => Internal_Valid (Self),
-     Post => (Static => Run'Result = NFA_Accepts (Self, Text, Whole))
+     Ghost  => Static,
+     Global => null,
+     Pre    => Left = Right,
+     Post   =>
+       (for all Target in State_Id =>
+          (for some Source in 1 .. Self.Count =>
+             Consumes_To (Self, Left, Byte, Source, Target))
+          = (for some Source in 1 .. Self.Count =>
+               Consumes_To (Self, Right, Byte, Source, Target)))
+   is
+   begin
+      null;
+   end Lemma_Transition_Extensional;
+
+   procedure Run_With
+     (Self           : Program;
+      Text           : String;
+      Whole          : Boolean;
+      Current, Seeds : in out Sparse_Set;
+      Found          : out Boolean)
+   with
+     Global => null,
+     Pre    =>
+       (Static =>
+          Internal_Valid (Self)
+          and then Sparse_Valid (Current, Self.Count)
+          and then Sparse_Valid (Seeds, Self.Count)),
+     Post   =>
+       (Static =>
+          Found = NFA_Accepts (Self, Text, Whole)
+          and then Sparse_Valid (Current, Self.Count)
+          and then Sparse_Valid (Seeds, Self.Count))
    is
       Offset  : Natural := 0;
-      Current : Sparse_Set (Self.Count);
-      Seeds   : Sparse_Set (Self.Count);
       Initial : constant State_Set := Model_Start (Self)
       with Ghost => Static;
    begin
       if not Self.Valid then
-         return False;
+         Found := False;
+         return;
       end if;
-      Lemma_Empty_Count (View (Current), Self.Count);
-      Lemma_Empty_Count (View (Seeds), Self.Count);
+      Clear_For_Reuse (Current, Self.Count);
+      Clear_For_Reuse (Seeds, Self.Count);
       Include (Seeds, Self.Start, Self.Count);
       pragma Assert (Static => View (Seeds) = Initial);
       Lemma_Reach_Extensional
@@ -6173,9 +6241,7 @@ is
            Loop_Invariant
              (Static =>
                 Sparse_Valid (Current, Self.Count)
-                and then Sparse_Valid (Seeds, Self.Count)
-                and then Current.Epoch = Seeds.Epoch
-                and then Current.Epoch <= Generation (Offset));
+                and then Sparse_Valid (Seeds, Self.Count));
          pragma
            Loop_Invariant
              (Static =>
@@ -6194,7 +6260,8 @@ is
          if not Whole or else Offset = Text'Length then
             for I in 1 .. Current.Length loop
                if Self.Code (Current.Dense (I)).Op = Accept_State then
-                  return True;
+                  Found := True;
+                  return;
                end if;
                pragma
                  Loop_Invariant
@@ -6216,7 +6283,27 @@ is
                  not Whole)
             with Ghost => Static;
          begin
+            Lemma_Transition_Extensional
+              (Self,
+               View (Current),
+               Model_States (Self, Text, Whole, Offset),
+               Text (Text'First + Offset));
+            if Seeds.Epoch = Generation'Last then
+               Reset (Seeds, Self.Count);
+            end if;
             Advance (Self, Current, Text (Text'First + Offset), Seeds);
+            pragma
+              Assert
+                (Static =>
+                   (for all Target in State_Id =>
+                      View (Seeds) (Target)
+                      = (for some Source in 1 .. Self.Count =>
+                           Consumes_To
+                             (Self,
+                              Model_States (Self, Text, Whole, Offset),
+                              Text (Text'First + Offset),
+                              Source,
+                              Target))));
             Dormant := Seeds.Length = 0;
             if not Whole then
                Include (Seeds, Self.Start, Self.Count);
@@ -6249,12 +6336,7 @@ is
                   pragma Loop_Invariant (Offset <= Text'Length);
                   pragma Loop_Invariant (Offset >= Offset'Loop_Entry);
                   pragma Loop_Variant (Decreases => Text'Length - Offset);
-                  pragma
-                    Loop_Invariant
-                      (Static =>
-                         Offset > 0
-                         and then Current.Epoch < Generation (Offset)
-                         and then Seeds.Epoch <= Generation (Offset));
+                  pragma Loop_Invariant (Static => Offset > 0);
                   pragma
                     Loop_Invariant
                       (Static =>
@@ -6278,7 +6360,7 @@ is
                   Offset := Offset + 1;
                end loop;
             end if;
-            Clear (Current, Self.Count);
+            Clear_For_Reuse (Current, Self.Count);
             Sparse_Closure (Self, Seeds, False, Offset = Text'Length, Current);
             pragma
               Assert
@@ -6286,8 +6368,44 @@ is
                    View (Current) = Model_States (Self, Text, Whole, Offset));
          end;
       end loop;
-      return False;
+      Found := False;
+   end Run_With;
+
+   function Run (Self : Program; Text : String; Whole : Boolean) return Boolean
+   with
+     Global => null,
+     Pre    => Internal_Valid (Self),
+     Post   => (Static => Run'Result = NFA_Accepts (Self, Text, Whole))
+   is
+      Current : Sparse_Set (Self.Count);
+      Seeds   : Sparse_Set (Self.Count);
+      Found   : Boolean;
+   begin
+      Lemma_Empty_Count (View (Current), Self.Count);
+      Lemma_Empty_Count (View (Seeds), Self.Count);
+      Run_With (Self, Text, Whole, Current, Seeds, Found);
+      pragma Assert (Static => Sparse_Valid (Current, Self.Count));
+      pragma Assert (Static => Sparse_Valid (Seeds, Self.Count));
+      return Found;
    end Run;
+
+   procedure Search_With
+     (Self  : Program;
+      Text  : String;
+      Work  : in out Matcher;
+      Found : out Boolean) is
+   begin
+      Run_With (Self, Text, False, Work.Current, Work.Seeds, Found);
+   end Search_With;
+
+   procedure Full_Match_With
+     (Self  : Program;
+      Text  : String;
+      Work  : in out Matcher;
+      Found : out Boolean) is
+   begin
+      Run_With (Self, Text, True, Work.Current, Work.Seeds, Found);
+   end Full_Match_With;
 
    function Search (Self : Program; Text : String) return Boolean
    is (Run (Self, Text, False));

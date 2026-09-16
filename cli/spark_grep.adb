@@ -73,63 +73,85 @@ procedure Spark_Grep is
       String'Write (IO.Text_Streams.Stream (IO.Standard_Output), Value);
    end Write;
 
-   procedure Filter (Name : String; Standard : Boolean) is
-      File           : Files.File_Type;
-      Line, Selected : Natural := 0;
-      Prefix         : constant Boolean :=
-        not Hide_Name and then (Show_Name or File_Count > 1);
-      procedure Record_Line (Record_Text : String; Stop : out Boolean) is
-         Matches : constant Boolean :=
-           (if Whole
-            then Regex.Full_Match (Code, Record_Text)
-            else Regex.Search (Code, Record_Text));
-      begin
-         Stop := False;
-         Line := Line + 1;
-         if Matches /= Invert then
-            Any_Selected := True;
-            Selected := Selected + 1;
-            if Quiet then
-               Stop := True;
-            elsif List_Files then
-               Write (Name & ASCII.LF);
-               Stop := True;
-            elsif not Count_Only then
-               if Prefix then
-                  Write (Name & ":");
-               end if;
-               if Numbered then
-                  Write (Image (Line) & ":");
-               end if;
-               Write (Record_Text & Delimiter);
+   procedure Process_Input is
+      Work : Regex.Matcher (Regex.State_Count (Code));
+      procedure Filter (Name : String; Standard : Boolean) is
+         File           : Files.File_Type;
+         Line, Selected : Natural := 0;
+         Prefix         : constant Boolean :=
+           not Hide_Name and then (Show_Name or File_Count > 1);
+         procedure Record_Line (Record_Text : String; Stop : out Boolean) is
+            Matches : Boolean;
+         begin
+            if Whole then
+               Regex.Full_Match_With (Code, Record_Text, Work, Matches);
+            else
+               Regex.Search_With (Code, Record_Text, Work, Matches);
             end if;
-         end if;
-      end Record_Line;
-   begin
-      if Standard then
-         Spark_Cli.Read_Records
-           (IO.Text_Streams.Stream (IO.Standard_Input),
-            Delimiter,
-            Record_Line'Access);
-      else
-         Files.Open (File, Files.In_File, Name);
-         Spark_Cli.Read_Records
-           (Files.Stream (File), Delimiter, Record_Line'Access);
-         Files.Close (File);
-      end if;
-      if Count_Only and then not Quiet and then not List_Files then
-         if Prefix then
-            Write (Name & ":");
-         end if;
-         Write (Image (Selected) & ASCII.LF);
-      end if;
-   exception
-      when E : others =>
-         if Files.Is_Open (File) then
+            Stop := False;
+            Line := Line + 1;
+            if Matches /= Invert then
+               Any_Selected := True;
+               Selected := Selected + 1;
+               if Quiet then
+                  Stop := True;
+               elsif List_Files then
+                  Write (Name & ASCII.LF);
+                  Stop := True;
+               elsif not Count_Only then
+                  if Prefix then
+                     Write (Name & ":");
+                  end if;
+                  if Numbered then
+                     Write (Image (Line) & ":");
+                  end if;
+                  Write (Record_Text & Delimiter);
+               end if;
+            end if;
+         end Record_Line;
+      begin
+         if Standard then
+            Spark_Cli.Read_Records
+              (IO.Text_Streams.Stream (IO.Standard_Input),
+               Delimiter,
+               Record_Line'Access);
+         else
+            Files.Open (File, Files.In_File, Name);
+            Spark_Cli.Read_Records
+              (Files.Stream (File), Delimiter, Record_Line'Access);
             Files.Close (File);
          end if;
-         Error (Name & ": " & Ada.Exceptions.Exception_Message (E));
-   end Filter;
+         if Count_Only and then not Quiet and then not List_Files then
+            if Prefix then
+               Write (Name & ":");
+            end if;
+            Write (Image (Selected) & ASCII.LF);
+         end if;
+      exception
+         when E : others =>
+            if Files.Is_Open (File) then
+               Files.Close (File);
+            end if;
+            Error (Name & ": " & Ada.Exceptions.Exception_Message (E));
+      end Filter;
+   begin
+      Regex.Initialize (Work);
+      if File_Count = 0 then
+         Filter ("(standard input)", True);
+      else
+         for K in 1 .. File_Count loop
+            declare
+               Name : constant String := Argument (File_Args (K));
+            begin
+               Filter
+                 ((if Name = "-" then "(standard input)" else Name),
+                  Name = "-");
+            end;
+            exit when Quiet and then Any_Selected;
+         end loop;
+      end if;
+   end Process_Input;
+
 begin
    while Index <= Argument_Count loop
       declare
@@ -247,19 +269,7 @@ begin
       Error ("pattern: " & Status'Image);
       return;
    end if;
-   if File_Count = 0 then
-      Filter ("(standard input)", True);
-   else
-      for K in 1 .. File_Count loop
-         declare
-            Name : constant String := Argument (File_Args (K));
-         begin
-            Filter
-              ((if Name = "-" then "(standard input)" else Name), Name = "-");
-         end;
-         exit when Quiet and then Any_Selected;
-      end loop;
-   end if;
+   Process_Input;
    if Had_Error then
       Set_Exit_Status (2);
    elsif Any_Selected then

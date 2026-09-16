@@ -20,6 +20,32 @@ is
    function Full_Match (Self : Program; Text : String) return Boolean
    is (Matching.Full_Match (Self.Impl, Text));
 
+   function Matcher_Valid (Work : Matcher) return Boolean
+   is (Matching.Matcher_Valid (Work.Impl));
+
+   procedure Initialize (Work : out Matcher) is
+   begin
+      Matching.Initialize (Work.Impl);
+   end Initialize;
+
+   procedure Search_With
+     (Self  : Program;
+      Text  : String;
+      Work  : in out Matcher;
+      Found : out Boolean) is
+   begin
+      Matching.Search_With (Self.Impl, Text, Work.Impl, Found);
+   end Search_With;
+
+   procedure Full_Match_With
+     (Self  : Program;
+      Text  : String;
+      Work  : in out Matcher;
+      Found : out Boolean) is
+   begin
+      Matching.Full_Match_With (Self.Impl, Text, Work.Impl, Found);
+   end Full_Match_With;
+
    function Pattern_Accepts
      (Pattern, Text : String; Whole : Boolean) return Boolean
    is (Parsing.Pattern_Accepts (Pattern, Text, Whole));
