@@ -1,5 +1,10 @@
 # Spark RE
 
+> **This repository has moved.** Development continues in
+> [kanigsson/spark-world](https://github.com/kanigsson/spark-world), under
+> [`apps/spark_re/`](https://github.com/kanigsson/spark-world/tree/main/apps/spark_re).
+> This repository is no longer maintained.
+
 An allocation-free, byte-oriented Thompson NFA regex library in Ada/SPARK,
 with ordinary Ada `spark-grep` and `spark-rg` CLIs. The library has no I/O or
 dependencies.
